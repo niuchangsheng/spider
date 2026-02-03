@@ -1,5 +1,5 @@
 #!/bin/bash
-# 心动论坛爬虫启动脚本
+# BBS论坛爬虫启动脚本（v2.0）
 # 自动激活虚拟环境并运行
 
 set -e
@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "=================================="
-echo "心动论坛爬虫启动脚本"
+echo "BBS论坛爬虫启动脚本 (v2.0)"
 echo "=================================="
 echo ""
 
@@ -54,7 +54,23 @@ echo "启动爬虫..."
 echo "=================================="
 echo ""
 
-python crawl_xindong.py
+# 默认参数
+PRESET="${PRESET:-xindong}"
+MODE="${MODE:-1}"
+
+# 支持传入命令行参数
+if [ $# -gt 0 ]; then
+    # 如果有参数，直接传递给 spider.py
+    echo "运行命令: python spider.py $@"
+    python spider.py "$@"
+else
+    # 否则使用默认配置
+    echo "运行命令: python spider.py --preset $PRESET --mode $MODE"
+    echo "提示: 可以设置环境变量 PRESET 和 MODE 来改变默认行为"
+    echo "      或直接传参: ./run_spider.sh --preset xindong --mode 2"
+    echo ""
+    python spider.py --preset "$PRESET" --mode "$MODE"
+fi
 
 # 退出虚拟环境
 deactivate
