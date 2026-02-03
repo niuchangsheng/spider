@@ -354,10 +354,10 @@ python spider.py --config xindong --mode 2  # 板块模式
 
 # 模式说明：
 # --mode 1: 批量爬取URL列表（并发）
-# --mode 2: 批量爬取板块列表（并发，每个板块默认3页）
+# --mode 2: 批量爬取板块列表（并发，默认爬取所有页）
 
-# 自定义参数：
-python spider.py --config xindong --mode 2 --max-pages 5
+# 限制页数（可选）：
+python spider.py --config xindong --mode 2 --max-pages 5  # 只爬前5页
 ```
 
 ### Discuz论坛特点
@@ -623,7 +623,7 @@ async with SpiderFactory.create(preset="discuz") as spider:
     await spider.crawl_board(
         board_url="https://example.com/forum/photo",
         board_name="摄影板块",
-        max_pages=20  # 爬取前20页
+        max_pages=20  # 限制为20页（默认不限制，爬取所有页）
     )
 ```
 
