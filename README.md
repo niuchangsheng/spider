@@ -2,6 +2,26 @@
 
 一个功能完善的BBS论坛图片爬虫系统，支持自动化爬取、图片去重、数据存储等功能。
 
+## 📚 文档导航
+
+### 🏗️ 架构与开发
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - 系统架构设计文档（必读）
+- **[DEVELOPMENT_PROCESS.md](DEVELOPMENT_PROCESS.md)** - 开发流程规范（⚠️ 强制执行）
+- **[TEAM_ROLES.md](TEAM_ROLES.md)** - 团队角色定义
+- **[SKILLS.md](SKILLS.md)** - 技术栈与技能清单
+
+### 📖 使用指南
+- **[QUICKSTART.md](QUICKSTART.md)** - 快速入门指南
+- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - 环境配置指南
+- **[XINDONG_README.md](XINDONG_README.md)** - 心动论坛专用说明
+
+### ⚠️ 重要提示
+> **所有代码变更必须遵循严格流程**：  
+> 1️⃣ 先更新设计文档 → 2️⃣ 设计评审 → 3️⃣ 编写代码 → 4️⃣ 代码审查 → 5️⃣ 测试验证  
+> 详见 [开发流程规范](DEVELOPMENT_PROCESS.md)
+
+---
+
 ## ✨ 核心特性
 
 ### 🎯 爬取功能
