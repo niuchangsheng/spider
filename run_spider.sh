@@ -55,7 +55,7 @@ echo "=================================="
 echo ""
 
 # 默认参数
-PRESET="${PRESET:-xindong}"
+CONFIG="${CONFIG:-xindong}"
 MODE="${MODE:-1}"
 
 # 支持传入命令行参数
@@ -65,11 +65,11 @@ if [ $# -gt 0 ]; then
     python spider.py "$@"
 else
     # 否则使用默认配置
-    echo "运行命令: python spider.py --preset $PRESET --mode $MODE"
-    echo "提示: 可以设置环境变量 PRESET 和 MODE 来改变默认行为"
-    echo "      或直接传参: ./run_spider.sh --preset xindong --mode 2"
+    echo "运行命令: python spider.py --config $CONFIG --mode $MODE"
+    echo "提示: 可以设置环境变量 CONFIG 和 MODE 来改变默认行为"
+    echo "      或直接传参: ./run_spider.sh --config xindong --mode 2"
     echo ""
-    python spider.py --preset "$PRESET" --mode "$MODE"
+    python spider.py --config "$CONFIG" --mode "$MODE"
 fi
 
 # 退出虚拟环境
