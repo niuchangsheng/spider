@@ -416,14 +416,16 @@ spider/
 ├── CODE_REVIEW_GUIDELINE.md # 代码审查指南
 ├── DOCUMENTATION_INDEX.md  # 文档索引导航
 ├── README.md              # 本文档
-├── bbs_spider.py          # 通用BBS爬虫
-├── crawl_xindong.py       # 心动论坛专用爬虫
+├── spider.py              # 统一爬虫主程序（v2.0）
 ├── detect_selectors.py    # 智能选择器检测工具
-├── config.py              # 通用配置管理
-├── config_xindong.py      # 心动论坛配置
+├── config.py              # 统一配置管理
 ├── requirements.txt       # 依赖列表
 ├── run_spider.sh          # 一键启动脚本
 ├── .env                   # 环境变量配置
+├── configs/               # 论坛配置文件目录 🆕
+│   ├── README.md          # 配置文件说明
+│   ├── example.json       # 配置模板
+│   └── xindong.json       # 心动论坛配置
 ├── core/                  # 核心模块
 │   ├── __init__.py
 │   ├── downloader.py      # 异步图片下载器
@@ -626,13 +628,20 @@ async with SpiderFactory.create(preset="phpbb") as spider:
     await spider.crawl_threads_from_list(thread_urls)
 ```
 
-### 示例5：手动配置
+### 示例5：使用自定义配置文件
 
 ```python
-from config import Config
+from config import get_example_config
 from spider import SpiderFactory
 
-# 完全自定义配置
+# 方式1: 创建配置文件 configs/myforum.json
+# 然后直接使用
+config = get_example_config("myforum")
+async with SpiderFactory.create(config=config) as spider:
+    await spider.crawl_board(...)
+
+# 方式2: 完全手动配置
+from config import Config
 custom_config = Config(
     bbs={
         "name": "我的论坛",
@@ -643,11 +652,11 @@ custom_config = Config(
         # ...
     }
 )
-
 async with SpiderFactory.create(config=custom_config) as spider:
-    # ... 爬取操作
-    pass
+    await spider.crawl_board(...)
 ```
+
+**推荐方式**: 在 `configs/` 目录创建JSON配置文件，参考 `configs/example.json` 模板。
 
 ### 示例6：获取统计信息
 
@@ -675,9 +684,17 @@ config = ForumPresets.discuz()      # Discuz论坛
 config = ForumPresets.phpbb()       # phpBB论坛
 config = ForumPresets.vbulletin()   # vBulletin论坛
 
-# 2. 示例配置（具体实例）
-config = get_example_config("xindong")  # 心动论坛（Discuz实例）
+# 2. 从配置文件加载（推荐）
+config = get_example_config("xindong")  # 自动加载 configs/xindong.json
+config = get_example_config("myforum")  # 自动加载 configs/myforum.json
 ```
+
+**如何添加自定义论坛**：
+1. 复制 `configs/example.json` 为 `configs/myforum.json`
+2. 编辑配置文件
+3. 直接使用 `get_example_config("myforum")`
+
+详见 `configs/README.md`
 
 ---
 
