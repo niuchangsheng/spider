@@ -2,7 +2,32 @@
 
 一个功能完善的BBS论坛图片爬虫系统，支持自动化爬取、图片去重、智能选择器检测等功能。
 
-**项目状态**: 🟢 正常运行 | **最后测试**: 2026-02-03 | **测试结果**: ✅ 成功
+**项目状态**: 🟢 正常运行 | **最后更新**: 2026-02-03 | **架构**: v2.0 重构版
+
+---
+
+## 🆕 架构升级 (v2.0)
+
+> **重要**: 项目已重构为统一架构，推荐使用新的 `spider.py` 和预设配置系统！
+
+**新特性**：
+- ✅ **统一爬虫架构** - `spider.py` 整合所有爬虫逻辑
+- ✅ **预设配置系统** - `ForumPresets.xindong()` 等开箱即用
+- ✅ **自动检测配置** - `ConfigLoader.auto_detect(url)` 智能识别论坛
+- ✅ **工厂模式** - `SpiderFactory.create(preset="xindong")` 统一创建
+
+**快速迁移**：
+```python
+# 旧方式（仍可用）
+from crawl_xindong import XindongSpider
+spider = XindongSpider()
+
+# 新方式（推荐）
+from spider import SpiderFactory
+spider = SpiderFactory.create(preset="xindong")
+```
+
+详见设计文档：`docs/designs/2026-02-03-refactor-spider-architecture.md`
 
 ---
 
@@ -107,15 +132,16 @@ pip install requests aiohttp beautifulsoup4 lxml Pillow loguru fake-useragent te
 #### 步骤3：运行爬虫
 
 ```bash
-# 心动论坛示例
+# 使用新的统一架构（推荐）
+python spider.py --preset xindong --mode 1  # 爬取示例帖子
+python spider.py --preset xindong --mode 2  # 爬取板块
+python spider.py --preset discuz  # 使用Discuz预设
+
+# 自动检测配置
+python spider.py --url "https://your-forum.com/board" --mode 1
+
+# 旧版本脚本（仍然可用，但推荐使用spider.py）
 python crawl_xindong.py
-
-# 或指定模式
-python crawl_xindong.py --mode 1  # 爬取示例帖子
-python crawl_xindong.py --mode 2  # 爬取板块
-python crawl_xindong.py --mode 3  # 批量爬取
-
-# 通用爬虫
 python bbs_spider.py
 ```
 
@@ -234,13 +260,16 @@ BBSConfig(
 ### 快速使用
 
 ```bash
-# 直接运行（已配置好）
+# 方式1：使用新的统一架构（推荐）
+python spider.py --preset xindong --mode 1
+
+# 方式2：使用旧脚本（仍可用）
 python crawl_xindong.py
 
-# 选择功能：
-# 1 - 爬取示例帖子（神仙道怀旧服公测帖）
-# 2 - 爬取神仙道板块（前3页）
-# 3 - 批量爬取多个帖子
+# 模式说明：
+# --mode 1: 爬取示例帖子（神仙道怀旧服公测帖）
+# --mode 2: 爬取神仙道板块（前3页）
+# --mode 3: 批量爬取多个帖子
 ```
 
 ### Discuz论坛特点
@@ -456,17 +485,18 @@ class DatabaseConfig(BaseModel):
 
 ## 📝 使用示例
 
-### 示例1：爬取单个帖子
+### 示例1：使用预设配置（推荐）
 
 ```python
-from bbs_spider import BBSSpider
+from spider import SpiderFactory
 
 async def main():
-    async with BBSSpider() as spider:
+    # 使用心动论坛预设
+    async with SpiderFactory.create(preset="xindong") as spider:
         await spider.crawl_thread({
-            'url': "https://example.com/thread/12345",
-            'thread_id': "12345",
-            'board': '板块名'
+            'url': "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145",
+            'thread_id': "3479145",
+            'board': '神仙道'
         })
 
 if __name__ == "__main__":
@@ -474,10 +504,31 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### 示例2：爬取整个板块
+### 示例2：自动检测配置
 
 ```python
-async with BBSSpider() as spider:
+from spider import SpiderFactory
+
+async def main():
+    # 自动检测论坛类型和选择器
+    async with SpiderFactory.create(url="https://your-forum.com/board") as spider:
+        await spider.crawl_board(
+            board_url="https://your-forum.com/board",
+            board_name="图片板块",
+            max_pages=10
+        )
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
+```
+
+### 示例3：使用预设配置爬取板块
+
+```python
+from spider import SpiderFactory
+
+async with SpiderFactory.create(preset="discuz") as spider:
     await spider.crawl_board(
         board_url="https://example.com/forum/photo",
         board_name="摄影板块",
@@ -485,30 +536,76 @@ async with BBSSpider() as spider:
     )
 ```
 
-### 示例3：批量爬取多个帖子
+### 示例4：批量爬取多个帖子
 
 ```python
+from spider import SpiderFactory
+
 thread_urls = [
     "https://example.com/thread/1",
     "https://example.com/thread/2",
     "https://example.com/thread/3",
 ]
 
-async with BBSSpider() as spider:
+async with SpiderFactory.create(preset="phpbb") as spider:
     await spider.crawl_threads_from_list(thread_urls)
 ```
 
-### 示例4：获取统计信息
+### 示例5：手动配置
 
 ```python
-async with BBSSpider() as spider:
+from config import Config
+from spider import SpiderFactory
+
+# 完全自定义配置
+custom_config = Config(
+    bbs={
+        "name": "我的论坛",
+        "forum_type": "custom",
+        "base_url": "https://my-forum.com",
+        "thread_list_selector": "div.my-thread",
+        "thread_link_selector": "a.my-link",
+        # ...
+    }
+)
+
+async with SpiderFactory.create(config=custom_config) as spider:
+    # ... 爬取操作
+    pass
+```
+
+### 示例6：获取统计信息
+
+```python
+from spider import SpiderFactory
+
+async with SpiderFactory.create(preset="xindong") as spider:
     # ... 执行爬取 ...
     
     stats = spider.get_statistics()
     print(f"爬取帖子数: {stats['threads_crawled']}")
     print(f"发现图片数: {stats['images_found']}")
     print(f"下载成功数: {stats['images_downloaded']}")
-    print(f"去重跳过数: {stats['images_skipped']}")
+    print(f"下载失败数: {stats['images_failed']}")
+    print(f"去重跳过数: {stats['duplicates_skipped']}")
+```
+
+### 📌 可用的预设配置
+
+```python
+from config import ForumPresets
+
+# Discuz论坛通用配置
+config = ForumPresets.discuz()
+
+# phpBB论坛通用配置
+config = ForumPresets.phpbb()
+
+# vBulletin论坛通用配置
+config = ForumPresets.vbulletin()
+
+# 心动论坛（Discuz）
+config = ForumPresets.xindong()
 ```
 
 ---
