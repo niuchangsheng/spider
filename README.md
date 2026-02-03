@@ -24,8 +24,8 @@
 
 | 场景 | 旧方式 | 新方式 |
 |------|--------|--------|
-| 通用爬虫 | `BBSSpider()` | `SpiderFactory.create()` |
-| Discuz爬虫 | `XindongSpider()` | `SpiderFactory.create(preset="xindong")` |
+| 通用爬虫 | `BBSSpider()` | `SpiderFactory.create(preset="discuz")` |
+| 心动论坛 | `XindongSpider()` | `SpiderFactory.create(config=get_example_config("xindong"))` |
 | 自动检测 | 手动运行 `detect_selectors.py` | `SpiderFactory.create(url="...")` |
 | 手动配置 | `BBSSpider()`<br/>全局修改config | `SpiderFactory.create(config=...)` |
 
@@ -40,12 +40,14 @@ config_module.config = xindong_config  # 全局修改
 
 **新方式**:
 ```python
-from config import ForumPresets
+from config import ForumPresets, get_example_config
 
-# 直接使用预设，无需全局修改
-config = ForumPresets.xindong()
+# 使用论坛类型预设
 config = ForumPresets.discuz()
 config = ForumPresets.phpbb()
+
+# 使用具体论坛实例（如心动论坛）
+config = get_example_config("xindong")
 ```
 
 ### 快速迁移（3步）
@@ -54,10 +56,12 @@ config = ForumPresets.phpbb()
 # 步骤1: 更新导入
 # 旧: from crawl_xindong import XindongSpider
 # 新: from spider import SpiderFactory
+#     from config import get_example_config
 
 # 步骤2: 更新创建方式
 # 旧: async with XindongSpider() as spider:
-# 新: async with SpiderFactory.create(preset="xindong") as spider:
+# 新: config = get_example_config("xindong")
+#     async with SpiderFactory.create(config=config) as spider:
 
 # 步骤3: 爬取逻辑保持不变
 await spider.crawl_thread(thread_info)  # ✅ API兼容
@@ -206,9 +210,8 @@ pip install requests aiohttp beautifulsoup4 lxml Pillow loguru fake-useragent te
 
 ```bash
 # 使用新的统一架构（推荐）
-python spider.py --preset xindong --mode 1  # 爬取示例帖子
-python spider.py --preset xindong --mode 2  # 爬取板块
-python spider.py --preset discuz  # 使用Discuz预设
+python spider.py --preset xindong --mode 1  # 爬取心动论坛示例帖子
+python spider.py --preset discuz --mode 1   # 使用Discuz类型预设
 
 # 自动检测配置
 python spider.py --url "https://your-forum.com/board" --mode 1
@@ -333,11 +336,8 @@ BBSConfig(
 ### 快速使用
 
 ```bash
-# 方式1：使用新的统一架构（推荐）
+# 使用统一架构
 python spider.py --preset xindong --mode 1
-
-# 方式2：使用旧脚本（仍可用）
-python crawl_xindong.py
 
 # 模式说明：
 # --mode 1: 爬取示例帖子（神仙道怀旧服公测帖）
@@ -558,14 +558,16 @@ class DatabaseConfig(BaseModel):
 
 ## 📝 使用示例
 
-### 示例1：使用预设配置（推荐）
+### 示例1：使用示例配置（推荐）
 
 ```python
 from spider import SpiderFactory
+from config import get_example_config
 
 async def main():
-    # 使用心动论坛预设
-    async with SpiderFactory.create(preset="xindong") as spider:
+    # 使用心动论坛示例配置
+    config = get_example_config("xindong")
+    async with SpiderFactory.create(config=config) as spider:
         await spider.crawl_thread({
             'url': "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145",
             'thread_id': "3479145",
@@ -663,22 +665,18 @@ async with SpiderFactory.create(preset="xindong") as spider:
     print(f"去重跳过数: {stats['duplicates_skipped']}")
 ```
 
-### 📌 可用的预设配置
+### 📌 可用的配置
 
 ```python
-from config import ForumPresets
+from config import ForumPresets, get_example_config
 
-# Discuz论坛通用配置
-config = ForumPresets.discuz()
+# 1. 论坛类型预设（通用配置）
+config = ForumPresets.discuz()      # Discuz论坛
+config = ForumPresets.phpbb()       # phpBB论坛
+config = ForumPresets.vbulletin()   # vBulletin论坛
 
-# phpBB论坛通用配置
-config = ForumPresets.phpbb()
-
-# vBulletin论坛通用配置
-config = ForumPresets.vbulletin()
-
-# 心动论坛（Discuz）
-config = ForumPresets.xindong()
+# 2. 示例配置（具体实例）
+config = get_example_config("xindong")  # 心动论坛（Discuz实例）
 ```
 
 ---
