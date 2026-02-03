@@ -415,25 +415,32 @@ class SpiderFactory:
     @classmethod
     def create(cls, config: Optional[Config] = None, url: Optional[str] = None, preset: Optional[str] = None) -> BBSSpider:
         """
-        创建爬虫实例
+        创建爬虫实例（工厂方法）
         
         Args:
-            config: 配置对象
-            url: 论坛URL（自动检测）
-            preset: 预设配置名称
+            config: 配置对象（优先级最高）
+            url: 论坛URL，自动检测配置
+            preset: 论坛类型预设 (discuz/phpbb/vbulletin)
         
         Returns:
-            对应类型的爬虫实例
+            对应类型的爬虫实例 (BBSSpider 或其子类)
         
         Examples:
-            # 使用预设
-            spider = SpiderFactory.create(preset="xindong")
+            # ✅ 方式1: 使用配置文件（推荐）
+            from config import get_example_config
+            config = get_example_config("xindong")  # 自动加载 configs/xindong.json
+            spider = SpiderFactory.create(config=config)
             
-            # 自动检测
-            spider = SpiderFactory.create(url="https://bbs.example.com")
+            # ✅ 方式2: 使用论坛类型预设
+            spider = SpiderFactory.create(preset="discuz")
             
-            # 手动配置
-            spider = SpiderFactory.create(config=my_config)
+            # ✅ 方式3: 自动检测论坛类型
+            spider = SpiderFactory.create(url="https://forum.com/board")
+            
+            # ✅ 方式4: 完全自定义配置
+            from config import Config
+            custom_config = Config(bbs={...}, crawler={...})
+            spider = SpiderFactory.create(config=custom_config)
         """
         # 先获取配置
         if config:
