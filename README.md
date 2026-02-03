@@ -10,21 +10,94 @@
 
 > **重要**: 项目已重构为统一架构，推荐使用新的 `spider.py` 和预设配置系统！
 
-**新特性**：
+### 新特性
+
 - ✅ **统一爬虫架构** - `spider.py` 整合所有爬虫逻辑
 - ✅ **预设配置系统** - `ForumPresets.xindong()` 等开箱即用
 - ✅ **自动检测配置** - `ConfigLoader.auto_detect(url)` 智能识别论坛
 - ✅ **工厂模式** - `SpiderFactory.create(preset="xindong")` 统一创建
+- ✅ **代码精简** - 减少25%代码量，更易维护
 
-**快速迁移**：
+### API对比
+
+#### 创建爬虫实例
+
+| 场景 | 旧方式 | 新方式 |
+|------|--------|--------|
+| 通用爬虫 | `BBSSpider()` | `SpiderFactory.create()` |
+| Discuz爬虫 | `XindongSpider()` | `SpiderFactory.create(preset="xindong")` |
+| 自动检测 | 手动运行 `detect_selectors.py` | `SpiderFactory.create(url="...")` |
+| 手动配置 | `BBSSpider()`<br/>全局修改config | `SpiderFactory.create(config=...)` |
+
+#### 配置管理
+
+**旧方式**:
 ```python
-# 旧方式（仍可用）
-from crawl_xindong import XindongSpider
-spider = XindongSpider()
+from config_xindong import xindong_config
+import config as config_module
+config_module.config = xindong_config  # 全局修改
+```
 
-# 新方式（推荐）
-from spider import SpiderFactory
-spider = SpiderFactory.create(preset="xindong")
+**新方式**:
+```python
+from config import ForumPresets
+
+# 直接使用预设，无需全局修改
+config = ForumPresets.xindong()
+config = ForumPresets.discuz()
+config = ForumPresets.phpbb()
+```
+
+### 快速迁移（3步）
+
+```python
+# 步骤1: 更新导入
+# 旧: from crawl_xindong import XindongSpider
+# 新: from spider import SpiderFactory
+
+# 步骤2: 更新创建方式
+# 旧: async with XindongSpider() as spider:
+# 新: async with SpiderFactory.create(preset="xindong") as spider:
+
+# 步骤3: 爬取逻辑保持不变
+await spider.crawl_thread(thread_info)  # ✅ API兼容
+await spider.crawl_board(...)  # ✅ API兼容
+```
+
+### 功能对照表
+
+| 功能 | 旧文件 | 新文件 | 状态 |
+|------|--------|--------|------|
+| 基础爬虫 | `bbs_spider.py` | `spider.py` | ✅ 已整合 |
+| Discuz爬虫 | `crawl_xindong.py` | `spider.py` (DiscuzSpider) | ✅ 已整合 |
+| 心动配置 | `config_xindong.py` | `config.py` (ForumPresets) | ✅ 已整合 |
+| 爬取方法 | `crawl_thread()` | `crawl_thread()` | ✅ 完全兼容 |
+
+### 扩展自定义论坛
+
+新架构让添加自定义论坛支持变得非常简单：
+
+```python
+from spider import BBSSpider, SpiderFactory
+
+# 1. 创建自定义爬虫类
+class MyForumSpider(BBSSpider):
+    async def process_images(self, images):
+        """重写图片处理逻辑"""
+        processed = []
+        for img_url in images:
+            # 自定义处理（如：添加认证参数）
+            if 'attachment' in img_url:
+                img_url += '&auth=token'
+            processed.append(img_url)
+        return processed
+
+# 2. 注册到工厂
+SpiderFactory.register('myforum', MyForumSpider)
+
+# 3. 使用
+async with SpiderFactory.create(preset="myforum") as spider:
+    await spider.crawl_thread(...)
 ```
 
 详见设计文档：`docs/designs/2026-02-03-refactor-spider-architecture.md`
