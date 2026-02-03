@@ -155,6 +155,19 @@ async def crawl_multiple_threads():
 
 def main():
     """主函数"""
+    import argparse
+    
+    # 命令行参数解析
+    parser = argparse.ArgumentParser(description='心动论坛图片爬虫')
+    parser.add_argument(
+        '--mode', 
+        type=int, 
+        default=1, 
+        choices=[1, 2, 3],
+        help='运行模式: 1=单个帖子(默认), 2=爬取板块, 3=批量帖子'
+    )
+    args = parser.parse_args()
+    
     # 配置日志
     logger.remove()  # 移除默认处理器
     logger.add(
@@ -178,24 +191,19 @@ def main():
     print("\n" + "=" * 60)
     print("心动论坛图片爬虫")
     print("=" * 60)
-    print("\n请选择功能：")
-    print("1. 爬取单个帖子（示例帖子）")
-    print("2. 爬取板块（神仙道板块前3页）")
-    print("3. 批量爬取多个帖子")
-    print("0. 退出")
     
-    choice = input("\n请输入选项 (0-3): ").strip()
+    # 根据参数选择功能
+    choice = args.mode
     
-    if choice == "1":
+    if choice == 1:
+        print("\n📌 模式: 爬取示例帖子")
         asyncio.run(crawl_single_thread())
-    elif choice == "2":
+    elif choice == 2:
+        print("\n📌 模式: 爬取神仙道板块（前3页）")
         asyncio.run(crawl_board())
-    elif choice == "3":
+    elif choice == 3:
+        print("\n📌 模式: 批量爬取多个帖子")
         asyncio.run(crawl_multiple_threads())
-    elif choice == "0":
-        print("退出程序")
-    else:
-        print("无效的选项！")
 
 
 if __name__ == "__main__":

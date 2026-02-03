@@ -67,7 +67,7 @@ class Storage:
     
     def save_thread(self, thread_data: Dict[str, Any]) -> bool:
         """保存帖子数据"""
-        if not self.mongo_db:
+        if self.mongo_db is None:
             logger.warning("MongoDB not connected")
             return False
         
@@ -92,7 +92,7 @@ class Storage:
     
     def save_image_record(self, image_data: Dict[str, Any]) -> bool:
         """保存图片记录"""
-        if not self.mongo_db:
+        if self.mongo_db is None:
             logger.warning("MongoDB not connected")
             return False
         
@@ -110,7 +110,7 @@ class Storage:
     
     def get_thread(self, thread_id: str) -> Optional[Dict[str, Any]]:
         """获取帖子数据"""
-        if not self.mongo_db:
+        if self.mongo_db is None:
             return None
         
         try:
@@ -122,7 +122,7 @@ class Storage:
     
     def thread_exists(self, thread_id: str) -> bool:
         """检查帖子是否已存在"""
-        if not self.mongo_db:
+        if self.mongo_db is None:
             return False
         
         try:
@@ -134,7 +134,7 @@ class Storage:
     
     def get_all_threads(self, board: Optional[str] = None) -> List[Dict[str, Any]]:
         """获取所有帖子"""
-        if not self.mongo_db:
+        if self.mongo_db is None:
             return []
         
         try:
@@ -147,7 +147,7 @@ class Storage:
     
     def get_statistics(self) -> Dict[str, Any]:
         """获取统计信息"""
-        if not self.mongo_db:
+        if self.mongo_db is None:
             return {}
         
         try:
