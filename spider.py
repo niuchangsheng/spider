@@ -11,7 +11,7 @@ from pathlib import Path
 from tqdm import tqdm
 from fake_useragent import UserAgent
 
-from config import Config, ConfigLoader, ForumPresets, get_example_config, XINDONG_BOARDS, EXAMPLE_THREADS
+from config import Config, ConfigLoader, ForumPresets, get_example_config, get_forum_boards, get_example_threads
 from core.downloader import ImageDownloader
 from core.parser import BBSParser
 from core.storage import storage
@@ -538,8 +538,9 @@ async def main():
         if args.mode == 1:
             # 模式1: 爬取单个帖子
             print(f"\n📌 模式: 爬取示例帖子 ({args.preset})")
-            thread_url = EXAMPLE_THREADS[0] if args.preset == "xindong" else None
-            if thread_url:
+            example_threads = get_example_threads(args.preset) if args.preset else []
+            if example_threads:
+                thread_url = example_threads[0]
                 thread_info = {
                     'url': thread_url,
                     'thread_id': spider.parser._extract_thread_id(thread_url),
@@ -548,28 +549,33 @@ async def main():
                 }
                 await spider.crawl_thread(thread_info)
             else:
-                logger.warning("⚠️  请提供帖子URL或使用 --preset xindong")
+                logger.warning(f"⚠️  配置 {args.preset} 中没有示例帖子")
         
         elif args.mode == 2:
             # 模式2: 爬取板块
             print(f"\n📌 模式: 爬取板块 ({args.preset})")
-            if args.preset == "xindong" and "神仙道" in XINDONG_BOARDS:
-                board_info = XINDONG_BOARDS["神仙道"]
+            boards = get_forum_boards(args.preset) if args.preset else {}
+            if boards:
+                # 使用第一个板块
+                first_board_name = list(boards.keys())[0]
+                board_info = boards[first_board_name]
+                logger.info(f"📁 爬取板块: {first_board_name}")
                 await spider.crawl_board(
                     board_url=board_info["url"],
                     board_name=board_info["board_name"],
                     max_pages=3
                 )
             else:
-                logger.warning("⚠️  请提供板块URL或使用 --preset xindong")
+                logger.warning(f"⚠️  配置 {args.preset} 中没有板块配置")
         
         elif args.mode == 3:
             # 模式3: 批量爬取
             print(f"\n📌 模式: 批量爬取 ({args.preset})")
-            if args.preset == "xindong":
-                await spider.crawl_threads_from_list(EXAMPLE_THREADS)
+            example_threads = get_example_threads(args.preset) if args.preset else []
+            if example_threads:
+                await spider.crawl_threads_from_list(example_threads)
             else:
-                logger.warning("⚠️  请提供帖子URL列表或使用 --preset xindong")
+                logger.warning(f"⚠️  配置 {args.preset} 中没有示例帖子")
         
         # 输出统计
         stats = spider.get_statistics()

@@ -5,14 +5,17 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import os
+import json
 import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
+from loguru import logger
 
 load_dotenv()
 
 # 项目根目录
 BASE_DIR = Path(__file__).parent
+CONFIG_DIR = BASE_DIR / "configs"
 
 
 class BBSConfig(BaseModel):
@@ -193,47 +196,102 @@ class ForumPresets:
 
 
 # ============================================================================
-# 示例配置 - 具体论坛实例
+# 配置文件加载 - 从 configs/ 目录动态加载
 # ============================================================================
 
-# 心动论坛配置（Discuz实例）
-EXAMPLE_CONFIGS = {
-    "xindong": Config(
+def load_forum_config_file(config_file: Path) -> Dict[str, Any]:
+    """
+    加载论坛配置文件
+    
+    Args:
+        config_file: 配置文件路径
+    
+    Returns:
+        配置字典
+    
+    Raises:
+        FileNotFoundError: 配置文件不存在
+        json.JSONDecodeError: JSON格式错误
+    """
+    with open(config_file, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+def create_config_from_dict(data: Dict[str, Any]) -> Config:
+    """
+    从字典创建Config对象
+    
+    Args:
+        data: 配置字典
+    
+    Returns:
+        Config实例
+    """
+    selectors = data.get("selectors", {})
+    
+    return Config(
         bbs={
-            "name": "心动论坛",
-            "forum_type": "discuz",
-            "base_url": "https://bbs.xd.com",
-            "login_url": "https://bbs.xd.com/member.php?mod=logging&action=login",
-            "thread_list_selector": "tbody[id^='normalthread'], tbody[id^='stickthread']",
-            "thread_link_selector": "a.s.xst, a.xst",
-            "image_selector": "img.zoom,img[file],img[aid],div.pattl img,div.pcb img",
-            "next_page_selector": "a.nxt, div.pg a.nxt",
+            "name": data.get("name", "Unknown Forum"),
+            "forum_type": data.get("forum_type", "custom"),
+            "base_url": data.get("base_url", ""),
+            "login_url": data.get("login_url"),
+            "thread_list_selector": selectors.get("thread_list", ""),
+            "thread_link_selector": selectors.get("thread_link", ""),
+            "image_selector": selectors.get("image", ""),
+            "next_page_selector": selectors.get("next_page", ""),
         },
-        crawler={
-            "max_concurrent_requests": 3,
-            "download_delay": 2.0,
-        },
-        image={
-            "min_width": 300,
-            "min_height": 300,
-            "min_size": 30000,
-        }
-    ),
-}
+        crawler=data.get("crawler", {}),
+        image=data.get("image", {}),
+    )
+
+
+def load_all_forum_configs() -> Dict[str, Config]:
+    """
+    自动加载所有论坛配置
+    
+    扫描 configs/ 目录下的所有 .json 文件（除了 example.json）
+    
+    Returns:
+        配置字典 {配置名: Config实例}
+    """
+    configs = {}
+    
+    if not CONFIG_DIR.exists():
+        logger.warning(f"配置目录不存在: {CONFIG_DIR}")
+        return configs
+    
+    for config_file in CONFIG_DIR.glob("*.json"):
+        # 跳过模板文件
+        if config_file.name in ["example.json", "template.json"]:
+            continue
+        
+        name = config_file.stem
+        try:
+            data = load_forum_config_file(config_file)
+            configs[name] = create_config_from_dict(data)
+            logger.info(f"✅ 加载配置: {name} ({data.get('name', 'Unknown')})")
+        except Exception as e:
+            logger.warning(f"⚠️  加载配置失败: {name} - {e}")
+    
+    return configs
+
+
+# 启动时自动加载所有配置
+EXAMPLE_CONFIGS = load_all_forum_configs()
 
 
 def get_example_config(name: str) -> Config:
     """
-    获取示例配置
+    获取论坛配置
     
     Args:
-        name: 示例名称 (xindong)
+        name: 配置名称（对应 configs/ 目录下的文件名，不含.json后缀）
     
     Returns:
         Config实例
     
     Raises:
-        ValueError: 未知的示例名称
+        ValueError: 未知的配置名称
     
     Examples:
         >>> config = get_example_config("xindong")
@@ -245,23 +303,63 @@ def get_example_config(name: str) -> Config:
     return EXAMPLE_CONFIGS[name]
 
 
-# 心动论坛板块配置
-XINDONG_BOARDS = {
-    "神仙道": {
-        "url": "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21",
-        "board_name": "神仙道",
-    },
-    "玩家交流区": {
-        "url": "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21",
-        "board_name": "神仙道玩家交流",
-    }
-}
+def get_forum_boards(config_name: str) -> Dict[str, Dict[str, str]]:
+    """
+    获取论坛板块配置
+    
+    Args:
+        config_name: 配置名称
+    
+    Returns:
+        板块字典 {板块名: {url, board_name}}
+    
+    Examples:
+        >>> boards = get_forum_boards("xindong")
+        >>> print(boards["神仙道"]["url"])
+    """
+    config_file = CONFIG_DIR / f"{config_name}.json"
+    if not config_file.exists():
+        logger.warning(f"配置文件不存在: {config_file}")
+        return {}
+    
+    try:
+        data = load_forum_config_file(config_file)
+        return data.get("boards", {})
+    except Exception as e:
+        logger.error(f"读取板块配置失败: {e}")
+        return {}
 
 
-# 示例帖子
-EXAMPLE_THREADS = [
-    "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145&extra=page%3D1",
-]
+def get_example_threads(config_name: str) -> List[str]:
+    """
+    获取示例帖子列表
+    
+    Args:
+        config_name: 配置名称
+    
+    Returns:
+        帖子URL列表
+    
+    Examples:
+        >>> threads = get_example_threads("xindong")
+        >>> print(threads[0])
+    """
+    config_file = CONFIG_DIR / f"{config_name}.json"
+    if not config_file.exists():
+        logger.warning(f"配置文件不存在: {config_file}")
+        return []
+    
+    try:
+        data = load_forum_config_file(config_file)
+        return data.get("example_threads", [])
+    except Exception as e:
+        logger.error(f"读取示例帖子失败: {e}")
+        return []
+
+
+# 向后兼容：保留旧的常量引用（但从配置文件读取）
+XINDONG_BOARDS = get_forum_boards("xindong")
+EXAMPLE_THREADS = get_example_threads("xindong")
 
 
 # ============================================================================

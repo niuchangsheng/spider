@@ -1,0 +1,40 @@
+{
+  "_comment": "这是一个论坛配置模板，复制此文件并修改为你的论坛配置",
+  
+  "name": "你的论坛名称",
+  "forum_type": "discuz",
+  "base_url": "https://your-forum.com",
+  "login_url": "https://your-forum.com/login",
+  
+  "selectors": {
+    "thread_list": "CSS选择器 - 帖子列表容器",
+    "thread_link": "CSS选择器 - 帖子链接",
+    "image": "CSS选择器 - 图片元素",
+    "next_page": "CSS选择器 - 下一页链接"
+  },
+  
+  "crawler": {
+    "max_concurrent_requests": 5,
+    "download_delay": 1.0,
+    "request_timeout": 30,
+    "max_retries": 3
+  },
+  
+  "image": {
+    "min_width": 200,
+    "min_height": 200,
+    "min_size": 10240
+  },
+  
+  "boards": {
+    "板块名称": {
+      "url": "板块URL",
+      "board_name": "板块显示名称"
+    }
+  },
+  
+  "example_threads": [
+    "示例帖子URL1",
+    "示例帖子URL2"
+  ]
+}
