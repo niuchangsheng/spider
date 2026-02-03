@@ -529,8 +529,8 @@ async def main():
                        help='URL列表，逗号分隔（覆盖配置文件）')
     parser.add_argument('--boards', type=str,
                        help='板块URL列表，逗号分隔（覆盖配置文件）')
-    parser.add_argument('--max-pages', type=int, default=3,
-                       help='每个板块最大爬取页数（mode 2）')
+    parser.add_argument('--max-pages', type=int, default=None,
+                       help='每个板块最大爬取页数（mode 2，默认不限制，爬取所有页）')
     
     args = parser.parse_args()
     
