@@ -1,9 +1,11 @@
 """
 配置管理模块 - BBS图片爬虫
+统一配置管理，支持多论坛预设
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import os
+import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -15,7 +17,9 @@ BASE_DIR = Path(__file__).parent
 
 class BBSConfig(BaseModel):
     """BBS论坛配置"""
-    # 基础配置
+    # 基础信息
+    name: str = Field(default="default", description="配置名称")
+    forum_type: str = Field(default="generic", description="论坛类型: discuz/phpbb/vbulletin/generic")
     base_url: str = Field(default="", description="BBS论坛基础URL")
     login_url: Optional[str] = Field(default=None, description="登录URL")
     
@@ -129,9 +133,180 @@ class Config(BaseModel):
         self.log.log_dir.mkdir(parents=True, exist_ok=True)
 
 
+# ============================================================================
+# 论坛预设配置
+# ============================================================================
+
+class ForumPresets:
+    """论坛预设配置"""
+    
+    @staticmethod
+    def discuz() -> Config:
+        """Discuz论坛通用配置"""
+        return Config(
+            bbs={
+                "name": "Discuz",
+                "forum_type": "discuz",
+                "thread_list_selector": "tbody[id^='normalthread'], tbody[id^='stickthread']",
+                "thread_link_selector": "a.s.xst, a.xst",
+                "image_selector": "img.zoom,img[file],img[aid],div.pattl img,div.pcb img",
+                "next_page_selector": "a.nxt, div.pg a.nxt",
+            },
+            crawler={
+                "max_concurrent_requests": 3,
+                "download_delay": 2.0,
+            },
+            image={
+                "min_width": 300,
+                "min_height": 300,
+                "min_size": 30000,
+            }
+        )
+    
+    @staticmethod
+    def phpbb() -> Config:
+        """phpBB论坛通用配置"""
+        return Config(
+            bbs={
+                "name": "phpBB",
+                "forum_type": "phpbb",
+                "thread_list_selector": "li.row",
+                "thread_link_selector": "a.topictitle",
+                "image_selector": "dl.attachbox img, div.content img",
+                "next_page_selector": "a.next",
+            }
+        )
+    
+    @staticmethod
+    def vbulletin() -> Config:
+        """vBulletin论坛通用配置"""
+        return Config(
+            bbs={
+                "name": "vBulletin",
+                "forum_type": "vbulletin",
+                "thread_list_selector": "li.threadbit",
+                "thread_link_selector": "a.title",
+                "image_selector": "div.content img, img.attachment",
+                "next_page_selector": "a[rel='next']",
+            }
+        )
+    
+    @staticmethod
+    def xindong() -> Config:
+        """心动论坛（Discuz）专用配置"""
+        config = ForumPresets.discuz()
+        config.bbs.name = "心动论坛"
+        config.bbs.base_url = "https://bbs.xd.com"
+        config.bbs.login_url = "https://bbs.xd.com/member.php?mod=logging&action=login"
+        return config
+
+
+# 心动论坛板块配置
+XINDONG_BOARDS = {
+    "神仙道": {
+        "url": "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21",
+        "board_name": "神仙道",
+    },
+    "玩家交流区": {
+        "url": "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21",
+        "board_name": "神仙道玩家交流",
+    }
+}
+
+
+# 示例帖子
+EXAMPLE_THREADS = [
+    "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145&extra=page%3D1",
+]
+
+
+# ============================================================================
+# 配置加载器
+# ============================================================================
+
+class ConfigLoader:
+    """配置加载器"""
+    
+    @staticmethod
+    def load(preset: str = "default") -> Config:
+        """
+        加载配置
+        
+        Args:
+            preset: 预设名称 (default/discuz/phpbb/vbulletin/xindong)
+        
+        Returns:
+            Config实例
+        """
+        preset = preset.lower()
+        
+        if preset == "discuz":
+            return ForumPresets.discuz()
+        elif preset == "phpbb":
+            return ForumPresets.phpbb()
+        elif preset == "vbulletin":
+            return ForumPresets.vbulletin()
+        elif preset == "xindong":
+            return ForumPresets.xindong()
+        else:
+            return load_config_from_env()
+    
+    @staticmethod
+    def auto_detect(url: str) -> Config:
+        """
+        自动检测论坛配置
+        
+        Args:
+            url: 论坛URL
+        
+        Returns:
+            自动检测的Config实例
+        """
+        from loguru import logger
+        from urllib.parse import urlparse
+        
+        logger.info(f"🔍 自动检测论坛配置: {url}")
+        
+        try:
+            from core.selector_detector import SelectorDetector
+            
+            detector = SelectorDetector(url)
+            asyncio.run(detector.detect_all())
+            
+            # 提取基础URL
+            parsed = urlparse(url)
+            base_url = f"{parsed.scheme}://{parsed.netloc}"
+            
+            # 根据检测结果创建配置
+            config = Config(
+                bbs={
+                    "name": f"Auto-{detector.forum_type}",
+                    "forum_type": detector.forum_type,
+                    "base_url": base_url,
+                    "thread_list_selector": detector.detected_selectors.get('thread_list_selector', ''),
+                    "thread_link_selector": detector.detected_selectors.get('thread_link_selector', ''),
+                    "image_selector": detector.detected_selectors.get('image_selector', ''),
+                    "next_page_selector": detector.detected_selectors.get('next_page_selector', ''),
+                }
+            )
+            
+            confidence = detector.get_confidence()
+            if confidence >= 70:
+                logger.success(f"✅ 自动检测成功！置信度: {confidence:.1f}%")
+            else:
+                logger.warning(f"⚠️  置信度较低: {confidence:.1f}%，建议手动调整配置")
+            
+            return config
+            
+        except Exception as e:
+            logger.error(f"❌ 自动检测失败: {e}")
+            logger.info("→ 使用默认配置")
+            return Config()
+
+
 # 从环境变量加载配置
-def load_config() -> Config:
-    """加载配置"""
+def load_config_from_env() -> Config:
+    """从环境变量加载配置"""
     config_data = {
         "bbs": {
             "base_url": os.getenv("BBS_BASE_URL", ""),
@@ -141,6 +316,7 @@ def load_config() -> Config:
         },
         "crawler": {
             "max_concurrent_requests": int(os.getenv("MAX_CONCURRENT_REQUESTS", "5")),
+            "download_delay": float(os.getenv("DOWNLOAD_DELAY", "1.0")),
             "use_proxy": os.getenv("USE_PROXY", "false").lower() == "true",
         },
         "database": {
@@ -154,5 +330,5 @@ def load_config() -> Config:
     return Config(**config_data)
 
 
-# 全局配置实例
-config = load_config()
+# 全局配置实例（默认从环境变量加载）
+config = load_config_from_env()
