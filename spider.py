@@ -32,17 +32,24 @@ class BBSSpider:
         Args:
             config: 手动配置（优先级最高）
             url: 论坛URL，自动检测配置
-            preset: 预设配置名称 (discuz/phpbb/vbulletin/xindong)
+            preset: 论坛类型预设 (discuz/phpbb/vbulletin)
+        
+        Note:
+            推荐使用 SpiderFactory.create() 而不是直接实例化
         
         Examples:
-            # 方式1: 使用预设配置
-            spider = BBSSpider(preset="xindong")
+            # ✅ 推荐：使用配置文件（自动加载 configs/xindong.json）
+            config = get_example_config("xindong")
+            spider = SpiderFactory.create(config=config)
             
-            # 方式2: 自动检测
-            spider = BBSSpider(url="https://example.com/forum")
+            # ✅ 推荐：使用论坛类型预设
+            spider = SpiderFactory.create(preset="discuz")
             
-            # 方式3: 手动配置
-            spider = BBSSpider(config=my_config)
+            # ✅ 推荐：自动检测
+            spider = SpiderFactory.create(url="https://forum.com/board")
+            
+            # ⚠️ 不推荐：直接实例化（除非自定义子类）
+            spider = BBSSpider(preset="discuz")
         """
         # 配置优先级: config > preset > url
         if config:
