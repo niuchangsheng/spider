@@ -2,7 +2,7 @@
 
 **BBS图片爬虫项目** - 完整文档导航  
 **最后更新**: 2026-02-03  
-**文档总数**: 8个 (核心文档已整合)
+**文档总数**: 9个 (v2.0架构升级)
 
 ---
 
@@ -220,22 +220,48 @@ git commit -m "docs: 添加XXX功能设计文档"
 
 ---
 
+#### [MIGRATION.md](MIGRATION.md) `8.8KB` ⭐⭐⭐⭐
+
+**架构迁移指南** - v1.x → v2.0 升级指南
+
+**📝 v2.0架构升级**：
+> 项目已完成重构，整合了 `bbs_spider.py`、`crawl_xindong.py` 和 `config_xindong.py`
+
+**包含内容**:
+- 🔄 主要变更说明 - 文件和API变更对照
+- 📋 迁移步骤（4步） - 详细迁移流程
+- 🔀 功能对照表 - 旧API vs 新API
+- ❓ 常见问题FAQ - 兼容性、迁移时间等
+- 📝 完整示例 - 新旧代码对比
+
+**亮点**：
+- ✅ 向后兼容（Git历史保留旧文件）
+- ✅ 逐步迁移（无截止日期）
+- ✅ 完整示例代码
+
+**适用人群**: 使用旧API的用户、需要升级的项目
+
+---
+
 ## 📊 文档统计
 
 ```
-总文档数: 8个（核心文档）
+总文档数: 9个（v2.0架构升级）
 分类分布:
   - 架构设计: 1个 (ARCHITECTURE.md)
   - 开发规范: 2个 (DEVELOPMENT_PROCESS.md, CODE_REVIEW_GUIDELINE.md)
-  - 设计体系: 2个 (设计文档模板和目录)
+  - 设计体系: 2个 (设计文档模板和目录 + 重构设计文档)
   - 团队协作: 2个 (TEAM_ROLES.md, SKILLS.md)
   - 使用指南: 1个 (README.md - 整合了5个独立文档)
+  - 迁移指南: 1个 (MIGRATION.md - v1.x → v2.0)
   - 文档索引: 1个 (DOCUMENTATION_INDEX.md)
 
-📝 文档整合优化:
-  - ✅ 5个独立使用文档已整合到 README.md
-  - ✅ 提供更连贯的阅读体验
-  - ✅ 便于查找和维护
+📝 v2.0架构升级:
+  - ✅ 整合 bbs_spider.py + crawl_xindong.py → spider.py
+  - ✅ 整合 config.py + config_xindong.py → config.py
+  - ✅ 集成选择器自动检测到初始化流程
+  - ✅ 代码量减少 ~130行（531行 → ~400行）
+  - ✅ 添加迁移指南 MIGRATION.md
 ```
 
 ---
