@@ -26,14 +26,14 @@
     "min_size": 10240
   },
   
-  "boards": {
-    "板块名称": {
-      "url": "板块URL",
-      "board_name": "板块显示名称"
+  "boards": [
+    {
+      "name": "板块显示名称",
+      "url": "板块URL"
     }
-  },
+  ],
   
-  "example_threads": [
+  "urls": [
     "示例帖子URL1",
     "示例帖子URL2"
   ]

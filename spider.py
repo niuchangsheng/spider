@@ -11,7 +11,7 @@ from pathlib import Path
 from tqdm import tqdm
 from fake_useragent import UserAgent
 
-from config import Config, ConfigLoader, ForumPresets, get_example_config, get_forum_boards, get_example_threads
+from config import Config, ConfigLoader, ForumPresets, get_example_config, get_forum_boards, get_forum_urls
 from core.downloader import ImageDownloader
 from core.parser import BBSParser
 from core.storage import storage
@@ -508,14 +508,30 @@ async def main():
     # 命令行参数
     parser = argparse.ArgumentParser(
         description='BBS图片爬虫 (v2.0)',
-        epilog='示例: python spider.py --preset xindong --mode 1'
+        epilog='示例: python spider.py --config xindong --mode 1'
     )
-    parser.add_argument('--preset', type=str, default="xindong", 
-                       help='配置名称 (论坛类型: discuz/phpbb/vbulletin 或配置文件名: xindong/myforum)')
-    parser.add_argument('--url', type=str, 
-                       help='论坛URL（自动检测配置，会覆盖 --preset）')
-    parser.add_argument('--mode', type=int, default=1, choices=[1, 2, 3],
-                       help='运行模式: 1=单帖子, 2=板块, 3=批量')
+    
+    # 配置来源（互斥组）
+    config_group = parser.add_mutually_exclusive_group()
+    config_group.add_argument('--preset', type=str,
+                             help='论坛类型预设 (discuz/phpbb/vbulletin)')
+    config_group.add_argument('--config', type=str, default="xindong",
+                             help='配置文件名 (从 configs/ 加载，如: xindong)')
+    config_group.add_argument('--url', type=str,
+                             help='论坛URL（自动检测配置）')
+    
+    # 处理模式
+    parser.add_argument('--mode', type=int, default=1, choices=[1, 2],
+                       help='处理模式: 1=URL列表, 2=板块列表')
+    
+    # 可选参数
+    parser.add_argument('--urls', type=str,
+                       help='URL列表，逗号分隔（覆盖配置文件）')
+    parser.add_argument('--boards', type=str,
+                       help='板块URL列表，逗号分隔（覆盖配置文件）')
+    parser.add_argument('--max-pages', type=int, default=3,
+                       help='每个板块最大爬取页数（mode 2）')
+    
     args = parser.parse_args()
     
     # 配置日志
@@ -538,64 +554,110 @@ async def main():
     )
     
     print("\n" + "=" * 60)
-    print("🕷️  BBS图片爬虫 - 统一架构")
+    print("🕷️  BBS图片爬虫 (v2.0)")
     print("=" * 60)
     
-    # 创建爬虫
-    if args.url:
-        spider = SpiderFactory.create(url=args.url)
-    elif args.preset == "xindong":
-        # 心动论坛使用示例配置
-        config = get_example_config("xindong")
-        spider = SpiderFactory.create(config=config)
+    # 1. 加载配置
+    config_name = None
+    if args.config:
+        logger.info(f"📁 使用配置文件: {args.config}")
+        config = get_example_config(args.config)
+        config_name = args.config
+    elif args.preset:
+        logger.info(f"📋 使用论坛类型预设: {args.preset}")
+        config = ConfigLoader.load(args.preset)
+    elif args.url:
+        logger.info(f"🌐 自动检测配置: {args.url}")
+        config = await ConfigLoader.auto_detect_config(args.url)
     else:
-        spider = SpiderFactory.create(preset=args.preset)
+        # 默认使用 xindong
+        logger.info("📁 使用默认配置: xindong")
+        config = get_example_config("xindong")
+        config_name = "xindong"
+    
+    # 2. 创建爬虫
+    spider = await SpiderFactory.create(config=config)
     
     async with spider:
-        # 根据模式选择功能
+        # 3. 根据模式执行任务
         if args.mode == 1:
-            # 模式1: 爬取单个帖子
-            print(f"\n📌 模式: 爬取示例帖子 ({args.preset})")
-            example_threads = get_example_threads(args.preset) if args.preset else []
-            if example_threads:
-                thread_url = example_threads[0]
-                thread_info = {
-                    'url': thread_url,
-                    'thread_id': spider.parser._extract_thread_id(thread_url),
-                    'title': '示例帖子',
-                    'board': '测试板块'
-                }
-                await spider.crawl_thread(thread_info)
+            # 模式1: 批量爬取URL列表
+            print(f"\n📌 模式1: 批量爬取URL列表")
+            
+            # 获取URL列表
+            if args.urls:
+                urls = [u.strip() for u in args.urls.split(',')]
+                logger.info(f"📝 使用命令行URL: {len(urls)} 个")
+            elif config_name:
+                urls = get_forum_urls(config_name)
+                logger.info(f"📝 从配置文件加载URL: {len(urls)} 个")
             else:
-                logger.warning(f"⚠️  配置 {args.preset} 中没有示例帖子")
+                urls = []
+            
+            if not urls:
+                logger.error("❌ 没有URL可爬取！请提供 --urls 或在配置文件中定义")
+                return
+            
+            # 并发爬取
+            logger.info(f"🚀 开始并发爬取 {len(urls)} 个URL...")
+            tasks = []
+            for url in urls:
+                thread_id = spider.parser._extract_thread_id(url)
+                thread_info = {
+                    'url': url,
+                    'thread_id': thread_id,
+                    'title': f'Thread-{thread_id}',
+                    'board': config.bbs.name
+                }
+                tasks.append(spider.crawl_thread(thread_info))
+            
+            # 使用 asyncio.gather 并发执行
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # 统计结果
+            success_count = sum(1 for r in results if not isinstance(r, Exception))
+            failed_count = len(results) - success_count
+            logger.info(f"✅ 完成: 成功 {success_count}, 失败 {failed_count}")
         
         elif args.mode == 2:
-            # 模式2: 爬取板块
-            print(f"\n📌 模式: 爬取板块 ({args.preset})")
-            boards = get_forum_boards(args.preset) if args.preset else {}
-            if boards:
-                # 使用第一个板块
-                first_board_name = list(boards.keys())[0]
-                board_info = boards[first_board_name]
-                logger.info(f"📁 爬取板块: {first_board_name}")
-                await spider.crawl_board(
-                    board_url=board_info["url"],
-                    board_name=board_info["board_name"],
-                    max_pages=3
-                )
+            # 模式2: 批量爬取板块列表
+            print(f"\n📌 模式2: 批量爬取板块列表")
+            
+            # 获取板块列表
+            if args.boards:
+                board_urls = [u.strip() for u in args.boards.split(',')]
+                boards_info = [{"name": f"Board-{i+1}", "url": url} for i, url in enumerate(board_urls)]
+                logger.info(f"📝 使用命令行板块: {len(boards_info)} 个")
+            elif config_name:
+                boards_info = get_forum_boards(config_name)
+                logger.info(f"📝 从配置文件加载板块: {len(boards_info)} 个")
             else:
-                logger.warning(f"⚠️  配置 {args.preset} 中没有板块配置")
+                boards_info = []
+            
+            if not boards_info:
+                logger.error("❌ 没有板块可爬取！请提供 --boards 或在配置文件中定义")
+                return
+            
+            # 并发爬取板块
+            logger.info(f"🚀 开始并发爬取 {len(boards_info)} 个板块（每个最多 {args.max_pages} 页）...")
+            tasks = []
+            for board in boards_info:
+                logger.info(f"📁 板块: {board['name']} - {board['url']}")
+                tasks.append(spider.crawl_board(
+                    board_url=board['url'],
+                    board_name=board['name'],
+                    max_pages=args.max_pages
+                ))
+            
+            # 使用 asyncio.gather 并发执行
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # 统计结果
+            success_count = sum(1 for r in results if not isinstance(r, Exception))
+            failed_count = len(results) - success_count
+            logger.info(f"✅ 完成: 成功 {success_count}, 失败 {failed_count}")
         
-        elif args.mode == 3:
-            # 模式3: 批量爬取
-            print(f"\n📌 模式: 批量爬取 ({args.preset})")
-            example_threads = get_example_threads(args.preset) if args.preset else []
-            if example_threads:
-                await spider.crawl_threads_from_list(example_threads)
-            else:
-                logger.warning(f"⚠️  配置 {args.preset} 中没有示例帖子")
-        
-        # 输出统计
+        # 4. 输出统计
         stats = spider.get_statistics()
         print("\n" + "=" * 60)
         print("📊 爬取统计:")

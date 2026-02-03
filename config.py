@@ -303,7 +303,7 @@ def get_example_config(name: str) -> Config:
     return EXAMPLE_CONFIGS[name]
 
 
-def get_forum_boards(config_name: str) -> Dict[str, Dict[str, str]]:
+def get_forum_boards(config_name: str) -> List[Dict[str, str]]:
     """
     获取论坛板块配置
     
@@ -311,38 +311,38 @@ def get_forum_boards(config_name: str) -> Dict[str, Dict[str, str]]:
         config_name: 配置名称
     
     Returns:
-        板块字典 {板块名: {url, board_name}}
+        板块列表 [{name, url}, ...]
     
     Examples:
         >>> boards = get_forum_boards("xindong")
-        >>> print(boards["神仙道"]["url"])
+        >>> print(boards[0]["name"], boards[0]["url"])
     """
     config_file = CONFIG_DIR / f"{config_name}.json"
     if not config_file.exists():
         logger.warning(f"配置文件不存在: {config_file}")
-        return {}
+        return []
     
     try:
         data = load_forum_config_file(config_file)
-        return data.get("boards", {})
+        return data.get("boards", [])
     except Exception as e:
         logger.error(f"读取板块配置失败: {e}")
-        return {}
+        return []
 
 
-def get_example_threads(config_name: str) -> List[str]:
+def get_forum_urls(config_name: str) -> List[str]:
     """
-    获取示例帖子列表
+    获取论坛URL列表
     
     Args:
         config_name: 配置名称
     
     Returns:
-        帖子URL列表
+        URL列表
     
     Examples:
-        >>> threads = get_example_threads("xindong")
-        >>> print(threads[0])
+        >>> urls = get_forum_urls("xindong")
+        >>> print(urls[0])
     """
     config_file = CONFIG_DIR / f"{config_name}.json"
     if not config_file.exists():
@@ -351,15 +351,23 @@ def get_example_threads(config_name: str) -> List[str]:
     
     try:
         data = load_forum_config_file(config_file)
-        return data.get("example_threads", [])
+        # 兼容旧格式 example_threads
+        return data.get("urls", data.get("example_threads", []))
     except Exception as e:
-        logger.error(f"读取示例帖子失败: {e}")
+        logger.error(f"读取URL列表失败: {e}")
         return []
+
+# 向后兼容：保留旧函数名
+def get_example_threads(config_name: str) -> List[str]:
+    """已废弃，请使用 get_forum_urls()"""
+    logger.warning("get_example_threads() 已废弃，请使用 get_forum_urls()")
+    return get_forum_urls(config_name)
 
 
 # 向后兼容：保留旧的常量引用（但从配置文件读取）
-XINDONG_BOARDS = get_forum_boards("xindong")
-EXAMPLE_THREADS = get_example_threads("xindong")
+_xindong_boards = get_forum_boards("xindong")
+XINDONG_BOARDS = {b["name"]: {"url": b["url"], "board_name": b["name"]} for b in _xindong_boards} if _xindong_boards else {}
+EXAMPLE_THREADS = get_forum_urls("xindong")
 
 
 # ============================================================================

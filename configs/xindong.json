@@ -24,18 +24,14 @@
     "min_size": 30000
   },
   
-  "boards": {
-    "神仙道": {
-      "url": "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21",
-      "board_name": "神仙道"
-    },
-    "玩家交流区": {
-      "url": "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21",
-      "board_name": "神仙道玩家交流"
+  "boards": [
+    {
+      "name": "神仙道玩家交流",
+      "url": "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21"
     }
-  },
+  ],
   
-  "example_threads": [
+  "urls": [
     "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145&extra=page%3D1"
   ]
 }
