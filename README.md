@@ -166,15 +166,16 @@ async with SpiderFactory.create(preset="myforum") as spider:
 ```bash
 cd /home/chang/spider
 
-# 默认运行（心动论坛，模式1）
+# 默认运行（心动论坛，URL列表模式）
 ./run_spider.sh
 
 # 自定义参数
-./run_spider.sh --preset xindong --mode 2
-./run_spider.sh --url "https://your-forum.com/board"
+./run_spider.sh --config xindong --mode 2      # 板块模式
+./run_spider.sh --preset discuz --mode 1        # 使用论坛类型
+./run_spider.sh --url "https://forum.com"      # 自动检测
 
 # 使用环境变量
-PRESET=xindong MODE=2 ./run_spider.sh
+CONFIG=xindong MODE=2 ./run_spider.sh
 ```
 
 自动脚本会：
@@ -219,15 +220,16 @@ pip install requests aiohttp beautifulsoup4 lxml Pillow loguru fake-useragent te
 
 ```bash
 # 使用新的统一架构（推荐）
-python spider.py --preset xindong --mode 1  # 爬取心动论坛示例帖子
-python spider.py --preset discuz --mode 1   # 使用Discuz类型预设
+python spider.py --config xindong --mode 1  # 配置文件 + URL列表模式
+python spider.py --config xindong --mode 2  # 配置文件 + 板块模式
+python spider.py --preset discuz --mode 1   # 论坛类型 + URL模式
 
 # 自动检测配置
-python spider.py --url "https://your-forum.com/board" --mode 1
+python spider.py --url "https://forum.com/board" --mode 1
 
-# 旧版本脚本（仍然可用，但推荐使用spider.py）
-python crawl_xindong.py
-python bbs_spider.py
+# 自定义URL/板块
+python spider.py --config xindong --mode 1 --urls "url1,url2,url3"
+python spider.py --config xindong --mode 2 --max-pages 5
 ```
 
 #### 步骤4：查看结果
@@ -347,12 +349,15 @@ BBSConfig(
 
 ```bash
 # 使用统一架构
-python spider.py --preset xindong --mode 1
+python spider.py --config xindong --mode 1  # URL列表模式
+python spider.py --config xindong --mode 2  # 板块模式
 
 # 模式说明：
-# --mode 1: 爬取示例帖子（神仙道怀旧服公测帖）
-# --mode 2: 爬取神仙道板块（前3页）
-# --mode 3: 批量爬取多个帖子
+# --mode 1: 批量爬取URL列表（并发）
+# --mode 2: 批量爬取板块列表（并发，每个板块默认3页）
+
+# 自定义参数：
+python spider.py --config xindong --mode 2 --max-pages 5
 ```
 
 ### Discuz论坛特点
