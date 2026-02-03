@@ -639,7 +639,10 @@ async def main():
                 return
             
             # 并发爬取板块
-            logger.info(f"🚀 开始并发爬取 {len(boards_info)} 个板块（每个最多 {args.max_pages} 页）...")
+            if args.max_pages:
+                logger.info(f"🚀 开始并发爬取 {len(boards_info)} 个板块（每个最多 {args.max_pages} 页）...")
+            else:
+                logger.info(f"🚀 开始并发爬取 {len(boards_info)} 个板块（爬取所有页面）...")
             tasks = []
             for board in boards_info:
                 logger.info(f"📁 板块: {board['name']} - {board['url']}")
