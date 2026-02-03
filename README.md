@@ -265,14 +265,15 @@ deactivate
 ### 快速使用
 
 ```bash
-# 激活虚拟环境
-source venv/bin/activate
+# 方式1: 使用 spider.py 自动检测（推荐）
+python spider.py --url "https://your-forum.com/board/1"
 
-# 运行检测工具
-python detect_selectors.py "https://your-forum.com/board/1"
+# 方式2: 在代码中使用
+from config import ConfigLoader
+config = await ConfigLoader.auto_detect_config("https://your-forum.com/board/1")
 
 # 示例：检测心动论坛
-python detect_selectors.py "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21"
+python spider.py --url "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21"
 ```
 
 **检测结果示例**：
@@ -416,9 +417,8 @@ spider/
 ├── CODE_REVIEW_GUIDELINE.md # 代码审查指南
 ├── DOCUMENTATION_INDEX.md  # 文档索引导航
 ├── README.md              # 本文档
-├── spider.py              # 统一爬虫主程序（v2.0）
-├── detect_selectors.py    # 智能选择器检测工具
-├── config.py              # 统一配置管理
+├── spider.py              # 统一爬虫主程序（v2.0，含自动检测）
+├── config.py              # 统一配置管理（含自动检测）
 ├── requirements.txt       # 依赖列表
 ├── run_spider.sh          # 一键启动脚本
 ├── .env                   # 环境变量配置
@@ -855,7 +855,7 @@ pip install -r requirements.txt
 
 ```bash
 # 1. 检查选择器是否正确
-python detect_selectors.py "论坛URL"
+python spider.py --url "论坛URL"
 
 # 2. 检查日志
 tail -f logs/bbs_spider.log
@@ -877,8 +877,8 @@ vim config.py
 **解决方案**:
 
 ```bash
-# 方法1：使用智能检测工具
-python detect_selectors.py "https://your-forum.com/board"
+# 方法1：使用自动检测
+python spider.py --url "https://your-forum.com/board"
 
 # 方法2：手动分析
 # 1. 打开浏览器，访问论坛
@@ -957,9 +957,9 @@ vim config.py
 
 **A**: 三种方法：
 
-1. **自动检测（推荐）**: `python detect_selectors.py "论坛URL"`
+1. **自动检测（推荐）**: `python spider.py --url "论坛URL"`
 2. **浏览器工具**: F12 → 选择元素 → Copy selector
-3. **查看示例**: 参考 `config_xindong.py` 中的Discuz配置
+3. **查看示例**: 参考 `configs/xindong.json` 中的Discuz配置
 
 ### Q2: 是否需要安装MongoDB和Redis？
 

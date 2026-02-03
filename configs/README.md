@@ -65,7 +65,7 @@ spider = SpiderFactory.create(config=config)
 ```
 
 **如何获取选择器**：
-1. 使用自动检测工具：`python detect_selectors.py "论坛URL"`
+1. 使用自动检测：`python spider.py --url "论坛URL"`
 2. 手动分析：浏览器F12 → 选择元素 → Copy selector
 
 ### 爬虫参数
@@ -177,7 +177,7 @@ spider = SpiderFactory.create(config=config)
 
 1. **自动检测（推荐）**:
 ```bash
-python detect_selectors.py "https://your-forum.com/board"
+python spider.py --url "https://your-forum.com/board"
 ```
 
 2. **浏览器工具**:
@@ -205,6 +205,9 @@ python -c "from config import get_example_config; print(get_example_config('myfo
 
 # 运行爬虫测试
 python spider.py --preset myforum --mode 1
+
+# 自动检测并测试
+python spider.py --url "https://your-forum.com/board" --mode 1
 ```
 
 ### Q4: 支持哪些论坛类型？
@@ -225,7 +228,7 @@ python spider.py --preset myforum --mode 1
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md) - 系统架构
 - [README.md](../README.md) - 使用指南
-- [detect_selectors.py](../detect_selectors.py) - 自动检测工具
+- [config.py](../config.py) - 配置管理（含自动检测功能）
 
 ---
 
