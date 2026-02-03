@@ -165,14 +165,23 @@ async with SpiderFactory.create(preset="myforum") as spider:
 
 ```bash
 cd /home/chang/spider
+
+# 默认运行（心动论坛，模式1）
 ./run_spider.sh
+
+# 自定义参数
+./run_spider.sh --preset xindong --mode 2
+./run_spider.sh --url "https://your-forum.com/board"
+
+# 使用环境变量
+PRESET=xindong MODE=2 ./run_spider.sh
 ```
 
 自动脚本会：
 - ✅ 检查并创建虚拟环境
 - ✅ 自动安装依赖
 - ✅ 激活虚拟环境
-- ✅ 运行爬虫（默认模式1）
+- ✅ 运行爬虫（支持所有spider.py参数）
 
 ### 方法2：手动安装
 
