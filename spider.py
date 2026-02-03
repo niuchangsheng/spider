@@ -11,7 +11,7 @@ from pathlib import Path
 from tqdm import tqdm
 from fake_useragent import UserAgent
 
-from config import Config, ConfigLoader, ForumPresets, XINDONG_BOARDS, EXAMPLE_THREADS
+from config import Config, ConfigLoader, ForumPresets, get_example_config, XINDONG_BOARDS, EXAMPLE_THREADS
 from core.downloader import ImageDownloader
 from core.parser import BBSParser
 from core.storage import storage
@@ -526,6 +526,10 @@ async def main():
     # 创建爬虫
     if args.url:
         spider = SpiderFactory.create(url=args.url)
+    elif args.preset == "xindong":
+        # 心动论坛使用示例配置
+        config = get_example_config("xindong")
+        spider = SpiderFactory.create(config=config)
     else:
         spider = SpiderFactory.create(preset=args.preset)
     

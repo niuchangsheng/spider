@@ -138,7 +138,7 @@ class Config(BaseModel):
 # ============================================================================
 
 class ForumPresets:
-    """论坛预设配置"""
+    """论坛类型预设 - 只包含论坛系统的通用配置"""
     
     @staticmethod
     def discuz() -> Config:
@@ -190,15 +190,59 @@ class ForumPresets:
                 "next_page_selector": "a[rel='next']",
             }
         )
+
+
+# ============================================================================
+# 示例配置 - 具体论坛实例
+# ============================================================================
+
+# 心动论坛配置（Discuz实例）
+EXAMPLE_CONFIGS = {
+    "xindong": Config(
+        bbs={
+            "name": "心动论坛",
+            "forum_type": "discuz",
+            "base_url": "https://bbs.xd.com",
+            "login_url": "https://bbs.xd.com/member.php?mod=logging&action=login",
+            "thread_list_selector": "tbody[id^='normalthread'], tbody[id^='stickthread']",
+            "thread_link_selector": "a.s.xst, a.xst",
+            "image_selector": "img.zoom,img[file],img[aid],div.pattl img,div.pcb img",
+            "next_page_selector": "a.nxt, div.pg a.nxt",
+        },
+        crawler={
+            "max_concurrent_requests": 3,
+            "download_delay": 2.0,
+        },
+        image={
+            "min_width": 300,
+            "min_height": 300,
+            "min_size": 30000,
+        }
+    ),
+}
+
+
+def get_example_config(name: str) -> Config:
+    """
+    获取示例配置
     
-    @staticmethod
-    def xindong() -> Config:
-        """心动论坛（Discuz）专用配置"""
-        config = ForumPresets.discuz()
-        config.bbs.name = "心动论坛"
-        config.bbs.base_url = "https://bbs.xd.com"
-        config.bbs.login_url = "https://bbs.xd.com/member.php?mod=logging&action=login"
-        return config
+    Args:
+        name: 示例名称 (xindong)
+    
+    Returns:
+        Config实例
+    
+    Raises:
+        ValueError: 未知的示例名称
+    
+    Examples:
+        >>> config = get_example_config("xindong")
+        >>> spider = SpiderFactory.create(config=config)
+    """
+    if name not in EXAMPLE_CONFIGS:
+        available = ", ".join(EXAMPLE_CONFIGS.keys())
+        raise ValueError(f"未知的示例配置: {name}，可用: {available}")
+    return EXAMPLE_CONFIGS[name]
 
 
 # 心动论坛板块配置
@@ -233,10 +277,14 @@ class ConfigLoader:
         加载配置
         
         Args:
-            preset: 预设名称 (default/discuz/phpbb/vbulletin/xindong)
+            preset: 预设名称 (discuz/phpbb/vbulletin)
         
         Returns:
             Config实例
+        
+        Note:
+            只支持论坛类型预设，不支持具体实例。
+            如需使用具体论坛实例（如心动论坛），请使用 get_example_config()
         """
         preset = preset.lower()
         
@@ -246,8 +294,6 @@ class ConfigLoader:
             return ForumPresets.phpbb()
         elif preset == "vbulletin":
             return ForumPresets.vbulletin()
-        elif preset == "xindong":
-            return ForumPresets.xindong()
         else:
             return load_config_from_env()
     
