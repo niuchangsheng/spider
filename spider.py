@@ -576,7 +576,7 @@ async def main():
         config_name = "xindong"
     
     # 2. 创建爬虫
-    spider = await SpiderFactory.create(config=config)
+    spider = SpiderFactory.create(config=config)
     
     async with spider:
         # 3. 根据模式执行任务
