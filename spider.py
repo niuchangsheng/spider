@@ -506,10 +506,14 @@ async def main():
     import argparse
     
     # 命令行参数
-    parser = argparse.ArgumentParser(description='BBS图片爬虫 - 统一架构')
+    parser = argparse.ArgumentParser(
+        description='BBS图片爬虫 (v2.0)',
+        epilog='示例: python spider.py --preset xindong --mode 1'
+    )
     parser.add_argument('--preset', type=str, default="xindong", 
-                       help='预设配置: discuz/phpbb/vbulletin/xindong')
-    parser.add_argument('--url', type=str, help='论坛URL（自动检测配置）')
+                       help='配置名称 (论坛类型: discuz/phpbb/vbulletin 或配置文件名: xindong/myforum)')
+    parser.add_argument('--url', type=str, 
+                       help='论坛URL（自动检测配置，会覆盖 --preset）')
     parser.add_argument('--mode', type=int, default=1, choices=[1, 2, 3],
                        help='运行模式: 1=单帖子, 2=板块, 3=批量')
     args = parser.parse_args()
