@@ -350,7 +350,7 @@ BBSConfig(
 ```bash
 # 使用统一架构
 python spider.py --config xindong --mode 1  # URL列表模式
-python spider.py --config xindong --mode 2  # 板块模式
+python spider.py --config xindong --mode 2  # 板块模式（默认爬取所有页）
 
 # 模式说明：
 # --mode 1: 批量爬取URL列表（并发）
