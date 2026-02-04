@@ -420,33 +420,41 @@ class ConfigLoader:
         logger.info(f"🔍 自动检测论坛配置: {url}")
         
         try:
+            import requests
             from core.selector_detector import SelectorDetector
             
-            detector = SelectorDetector(url)
-            asyncio.run(detector.detect_all())
+            # 获取HTML内容
+            response = requests.get(url, timeout=30)
+            html = response.text
+            
+            # 自动检测选择器
+            detector = SelectorDetector()
+            result = detector.auto_detect_selectors(html, url)
             
             # 提取基础URL
             parsed = urlparse(url)
             base_url = f"{parsed.scheme}://{parsed.netloc}"
             
             # 根据检测结果创建配置
+            selectors = result['selectors']
+            confidence_overall = result['confidence']['overall'] * 100  # 转换为百分比
+            
             config = Config(
                 bbs={
-                    "name": f"Auto-{detector.forum_type}",
-                    "forum_type": detector.forum_type,
+                    "name": f"Auto-{result['forum_type']}",
+                    "forum_type": result['forum_type'],
                     "base_url": base_url,
-                    "thread_list_selector": detector.detected_selectors.get('thread_list_selector', ''),
-                    "thread_link_selector": detector.detected_selectors.get('thread_link_selector', ''),
-                    "image_selector": detector.detected_selectors.get('image_selector', ''),
-                    "next_page_selector": detector.detected_selectors.get('next_page_selector', ''),
+                    "thread_list_selector": selectors.get('thread_list_selector', ''),
+                    "thread_link_selector": selectors.get('thread_link_selector', ''),
+                    "image_selector": selectors.get('image_selector', ''),
+                    "next_page_selector": selectors.get('next_page_selector', ''),
                 }
             )
             
-            confidence = detector.get_confidence()
-            if confidence >= 70:
-                logger.success(f"✅ 自动检测成功！置信度: {confidence:.1f}%")
+            if confidence_overall >= 70:
+                logger.success(f"✅ 自动检测成功！置信度: {confidence_overall:.1f}%")
             else:
-                logger.warning(f"⚠️  置信度较低: {confidence:.1f}%，建议手动调整配置")
+                logger.warning(f"⚠️  置信度较低: {confidence_overall:.1f}%，建议手动调整配置")
             
             return config
             
