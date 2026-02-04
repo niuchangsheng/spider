@@ -529,10 +529,6 @@ async def main():
                        help='处理模式: 1=URL列表, 2=板块列表')
     
     # 可选参数
-    parser.add_argument('--urls', type=str,
-                       help='URL列表，逗号分隔（覆盖配置文件）')
-    parser.add_argument('--boards', type=str,
-                       help='板块URL列表，逗号分隔（覆盖配置文件）')
     parser.add_argument('--max-pages', type=int, default=None,
                        help='每个板块最大爬取页数（mode 2，默认不限制，爬取所有页）')
     
@@ -592,11 +588,7 @@ async def main():
             print(f"\n📌 模式1: 批量爬取URL列表")
             
             # 获取URL列表
-            if args.urls:
-                # 优先使用 --urls 参数（逗号分隔的多个URL）
-                urls = [u.strip() for u in args.urls.split(',')]
-                logger.info(f"📝 使用命令行URL: {len(urls)} 个")
-            elif url_from_arg:
+            if url_from_arg:
                 # 使用 --url 参数（单个URL）
                 urls = [url_from_arg]
                 logger.info(f"📝 使用指定URL: {url_from_arg}")
@@ -637,15 +629,12 @@ async def main():
             print(f"\n📌 模式2: 批量爬取板块列表")
             
             # 获取板块列表
-            if args.boards:
-                board_urls = [u.strip() for u in args.boards.split(',')]
-                boards_info = [{"name": f"Board-{i+1}", "url": url} for i, url in enumerate(board_urls)]
-                logger.info(f"📝 使用命令行板块: {len(boards_info)} 个")
-            elif config_name:
+            if config_name:
                 boards_info = get_forum_boards(config_name)
                 logger.info(f"📝 从配置文件加载板块: {len(boards_info)} 个")
             else:
                 boards_info = []
+                logger.error("❌ 板块模式需要指定配置文件！请使用 --config NAME")
             
             if not boards_info:
                 logger.error("❌ 没有板块可爬取！请提供 --boards 或在配置文件中定义")
