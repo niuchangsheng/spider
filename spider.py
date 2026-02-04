@@ -125,7 +125,6 @@ async def main():
 async def handle_crawl_url(args):
     """处理 crawl-url 子命令"""
     from config import ConfigLoader, get_example_config
-    from spider import SpiderFactory
     
     print(f"\n📌 命令: 爬取单个URL")
     print(f"URL: {args.url}")
@@ -168,7 +167,6 @@ async def handle_crawl_url(args):
 async def handle_crawl_urls(args):
     """处理 crawl-urls 子命令"""
     from config import get_example_config, get_forum_urls
-    from spider import SpiderFactory
     
     print(f"\n📌 命令: 爬取配置中的URL列表")
     print(f"配置: {args.config}")
@@ -216,7 +214,6 @@ async def handle_crawl_urls(args):
 async def handle_crawl_board(args):
     """处理 crawl-board 子命令"""
     from config import ConfigLoader, get_example_config
-    from spider import SpiderFactory
     
     print(f"\n📌 命令: 爬取单个板块")
     print(f"板块URL: {args.board_url}")
@@ -259,7 +256,6 @@ async def handle_crawl_board(args):
 async def handle_crawl_boards(args):
     """处理 crawl-boards 子命令"""
     from config import get_example_config, get_forum_boards
-    from spider import SpiderFactory
     
     print(f"\n📌 命令: 爬取配置中的所有板块")
     print(f"配置: {args.config}")
