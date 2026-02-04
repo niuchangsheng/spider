@@ -35,7 +35,10 @@ class DynamicPageParser(BBSParser):
         Args:
             config: 配置对象，包含选择器等信息
         """
-        super().__init__(config)
+        super().__init__()
+        
+        # 保存config引用
+        self.config = config
         
         # 默认文章选择器（可通过配置覆盖）
         self.article_selector = getattr(config.bbs, 'article_selector', '.article')
