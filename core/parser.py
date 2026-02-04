@@ -185,6 +185,8 @@ class BBSParser:
             r'tid=(\d+)',
             r'id=(\d+)',
             r'/(\d+)\.html',
+            r'/(\d+)$',  # URL末尾的数字（如：https://sxd.xd.com/15486）
+            r'/(\d+)[/?]',  # 数字后跟 / 或 ?
         ]
         
         for pattern in patterns:
@@ -192,8 +194,10 @@ class BBSParser:
             if match:
                 return match.group(1)
         
-        # 如果无法提取，使用URL的hash值
-        return str(hash(url))
+        # 如果无法提取，使用URL的hash值（取绝对值避免负数）
+        hash_value = abs(hash(url))
+        logger.warning(f"无法从URL提取thread_id，使用hash: {url} -> {hash_value}")
+        return str(hash_value)
     
     def _extract_number(self, text: str) -> int:
         """从文本中提取数字"""
