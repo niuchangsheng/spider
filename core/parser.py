@@ -180,13 +180,13 @@ class BBSParser:
         """从URL中提取帖子ID"""
         # 尝试多种模式
         patterns = [
-            r'/thread[/-](\d+)',
-            r'/t[/-](\d+)',
-            r'tid=(\d+)',
-            r'id=(\d+)',
-            r'/(\d+)\.html',
-            r'/(\d+)$',  # URL末尾的数字（如：https://sxd.xd.com/15486）
-            r'/(\d+)[/?]',  # 数字后跟 / 或 ?
+            r'/thread[/-](\d+)',        # /thread/123 或 /thread-123
+            r'/t[/-](\d+)',              # /t/123 或 /t-123
+            r'tid=(\d+)',                # ?tid=123
+            r'id=(\d+)',                 # ?id=123
+            r'/(\d+)\.html',             # /123.html
+            r'/(\d+)/?$',                # /123 或 /123/ (URL末尾的数字)
+            r'/(\d+)[?&#]',              # /123? 或 /123# 或 /123&
         ]
         
         for pattern in patterns:
@@ -194,10 +194,16 @@ class BBSParser:
             if match:
                 return match.group(1)
         
-        # 如果无法提取，使用URL的hash值（取绝对值避免负数）
-        hash_value = abs(hash(url))
-        logger.warning(f"无法从URL提取thread_id，使用hash: {url} -> {hash_value}")
-        return str(hash_value)
+        # 如果无法提取，使用URL路径的最后部分（避免负数hash）
+        from urllib.parse import urlparse
+        import hashlib
+        path = urlparse(url).path.strip('/')
+        if path:
+            # 使用路径的MD5作为ID（前16位，保证唯一且美观）
+            return hashlib.md5(url.encode()).hexdigest()[:16]
+        
+        # 最后手段：使用完整的MD5
+        return hashlib.md5(url.encode()).hexdigest()[:16]
     
     def _extract_number(self, text: str) -> int:
         """从文本中提取数字"""
