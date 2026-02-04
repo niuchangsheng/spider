@@ -522,7 +522,7 @@ async def main():
     config_group.add_argument('--config', type=str, default="xindong",
                              help='配置文件名 (从 configs/ 加载，如: xindong)')
     config_group.add_argument('--url', type=str,
-                             help='论坛URL（自动检测配置）')
+                             help='论坛URL，支持单个或多个（逗号分隔），自动检测配置')
     
     # 处理模式
     parser.add_argument('--mode', type=int, default=1, choices=[1, 2],
@@ -559,7 +559,7 @@ async def main():
     
     # 1. 加载配置
     config_name = None
-    url_from_arg = None  # 记录从--url参数传入的URL
+    urls_from_arg = None  # 记录从--url参数传入的URL列表
     
     if args.config:
         logger.info(f"📁 使用配置文件: {args.config}")
@@ -569,9 +569,10 @@ async def main():
         logger.info(f"📋 使用论坛类型预设: {args.preset}")
         config = ConfigLoader.load(args.preset)
     elif args.url:
-        logger.info(f"🌐 自动检测配置: {args.url}")
-        config = await ConfigLoader.auto_detect_config(args.url)
-        url_from_arg = args.url  # 保存URL用于后续爬取
+        # 支持多个URL，用逗号分隔
+        urls_from_arg = [u.strip() for u in args.url.split(',')]
+        logger.info(f"🌐 自动检测配置: {urls_from_arg[0]} (共 {len(urls_from_arg)} 个URL)")
+        config = await ConfigLoader.auto_detect_config(urls_from_arg[0])
     else:
         # 默认使用 xindong
         logger.info("📁 使用默认配置: xindong")
@@ -588,10 +589,13 @@ async def main():
             print(f"\n📌 模式1: 批量爬取URL列表")
             
             # 获取URL列表
-            if url_from_arg:
-                # 使用 --url 参数（单个URL）
-                urls = [url_from_arg]
-                logger.info(f"📝 使用指定URL: {url_from_arg}")
+            if urls_from_arg:
+                # 使用 --url 参数（支持多个URL，逗号分隔）
+                urls = urls_from_arg
+                if len(urls) == 1:
+                    logger.info(f"📝 使用指定URL: {urls[0]}")
+                else:
+                    logger.info(f"📝 使用指定URL: {len(urls)} 个")
             elif config_name:
                 # 从配置文件加载
                 urls = get_forum_urls(config_name)
@@ -600,7 +604,7 @@ async def main():
                 urls = []
             
             if not urls:
-                logger.error("❌ 没有URL可爬取！请提供 --urls 或在配置文件中定义")
+                logger.error("❌ 没有URL可爬取！请提供 --url 或在配置文件中定义")
                 return
             
             # 并发爬取
