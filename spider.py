@@ -654,6 +654,118 @@ async def handle_crawl_boards(args):
         print_statistics(spider)
 
 
+async def handle_crawl_news(args):
+    """处理 crawl-news 子命令"""
+    from config import Config, get_example_config
+    from core.dynamic_crawler import DynamicNewsCrawler
+    from core.downloader import ImageDownloader
+    
+    print(f"\n📌 命令: 爬取动态新闻页面")
+    print(f"URL: {args.url}")
+    print(f"方式: {args.method}")
+    if args.max_pages:
+        print(f"最大页数: {args.max_pages}")
+    else:
+        print(f"最大页数: 不限制（爬取所有页）")
+    
+    # 1. 加载配置
+    if args.config:
+        logger.info(f"📁 使用配置文件: {args.config}")
+        config = get_example_config(args.config)
+    else:
+        # 创建默认配置
+        logger.info(f"🌐 使用默认配置")
+        from urllib.parse import urlparse
+        parsed = urlparse(args.url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        
+        config = Config(
+            bbs={
+                "name": "动态新闻网站",
+                "base_url": base_url,
+                "forum_type": "custom"
+            }
+        )
+    
+    # 2. 创建爬虫
+    crawler = DynamicNewsCrawler(config)
+    
+    # 3. 爬取页面
+    async with crawler:
+        logger.info(f"🚀 开始爬取动态新闻页面...")
+        
+        # 选择爬取方式
+        if args.method == 'ajax':
+            articles = await crawler.crawl_dynamic_page_ajax(
+                args.url,
+                max_pages=args.max_pages
+            )
+        else:  # selenium
+            articles = await crawler.crawl_dynamic_page_selenium(
+                args.url,
+                max_clicks=args.max_pages
+            )
+        
+        if not articles:
+            logger.warning("⚠️  没有找到文章")
+            return
+        
+        logger.info(f"✅ 发现 {len(articles)} 篇文章")
+        
+        # 4. 是否下载文章详情和图片
+        if args.download_images:
+            logger.info(f"🚀 开始下载文章详情和图片...")
+            
+            # 爬取文章详情
+            full_articles = await crawler.crawl_articles_batch(articles)
+            
+            # 下载图片
+            total_images = 0
+            downloaded_images = 0
+            
+            async with ImageDownloader() as downloader:
+                for article in full_articles:
+                    images = article.get('images', [])
+                    if not images:
+                        continue
+                    
+                    total_images += len(images)
+                    
+                    # 创建保存目录
+                    article_id = article.get('article_id', 'unknown')
+                    save_dir = config.image.download_dir / config.bbs.name / article_id
+                    save_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # 下载图片
+                    metadata = {
+                        'article_id': article_id,
+                        'title': article.get('title', ''),
+                        'url': article.get('url', '')
+                    }
+                    
+                    results = await downloader.download_batch(
+                        images,
+                        save_dir,
+                        metadata
+                    )
+                    
+                    # 统计成功数
+                    downloaded_images += sum(1 for r in results if r.get('success'))
+            
+            logger.success(f"✅ 图片下载完成: {downloaded_images}/{total_images}")
+        
+        # 5. 输出统计
+        stats = crawler.get_statistics()
+        print("\n" + "=" * 60)
+        print("📊 爬取统计:")
+        print(f"  发现文章: {stats['articles_found']}")
+        if args.download_images:
+            print(f"  爬取详情: {stats['articles_crawled']}")
+            print(f"  爬取失败: {stats['articles_failed']}")
+            print(f"  下载图片: {downloaded_images if 'downloaded_images' in locals() else 0}")
+        print("=" * 60)
+
+
 # ============================================================================
 # 主函数
 # ============================================================================
@@ -733,6 +845,21 @@ async def main():
     parser_boards.add_argument('--max-pages', type=int, default=None,
                               help='每个板块最大页数（默认：爬取所有页）')
     
+    # ============================================================================
+    # 子命令5: crawl-news - 爬取动态新闻页面
+    # ============================================================================
+    parser_news = subparsers.add_parser('crawl-news', help='爬取动态新闻页面（支持Ajax加载更多）')
+    parser_news.add_argument('url', type=str, help='新闻页面URL')
+    parser_news.add_argument('--max-pages', type=int, default=None,
+                            help='最大页数（默认：爬取所有页）')
+    parser_news.add_argument('--method', type=str, default='ajax',
+                            choices=['ajax', 'selenium'],
+                            help='爬取方式：ajax(快速) 或 selenium(可靠)，默认ajax')
+    parser_news.add_argument('--download-images', action='store_true',
+                            help='是否下载文章中的图片')
+    parser_news.add_argument('--config', type=str,
+                            help='配置文件名（可选，用于自定义选择器）')
+    
     args = parser.parse_args()
     
     # 配置日志
@@ -767,6 +894,8 @@ async def main():
         await handle_crawl_board(args)
     elif args.command == 'crawl-boards':
         await handle_crawl_boards(args)
+    elif args.command == 'crawl-news':
+        await handle_crawl_news(args)
 
 
 # ============================================================================
