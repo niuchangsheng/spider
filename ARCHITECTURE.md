@@ -1,9 +1,9 @@
 # 系统架构设计文档
 
 **项目名称**: BBS图片爬虫系统  
-**版本**: v1.0  
+**版本**: v2.1  
 **架构师**: Chang  
-**最后更新**: 2026-02-03  
+**最后更新**: 2026-02-04  
 **状态**: 🟢 已发布
 
 ---
@@ -24,6 +24,8 @@
 | 版本 | 日期 | 作者 | 变更内容 |
 |------|------|------|----------|
 | v1.0 | 2026-02-03 | Chang | 初始版本，完整架构设计 |
+| v2.0 | 2026-02-03 | Chang | 统一爬虫架构，预设配置系统 |
+| v2.1 | 2026-02-04 | Chang | CLI重构：子命令模式（重大升级） |
 
 ---
 
@@ -75,16 +77,18 @@ BBS论坛图片爬虫系统旨在提供一个通用、高效、可扩展的论�
 ┌─────────────────────────────────────────────────────────────┐
 │                        应用层 (Application)                  │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  CLI工具      │  │  配置管理    │  │  选择器检测  │      │
-│  │crawl_xindong │  │ config.py    │  │detect_selectors│    │
+│  │  CLI工具      │  │  配置管理    │  │  自动化脚本  │      │
+│  │ spider.py    │  │ config.py    │  │run_spider.sh │      │
+│  │ (子命令模式)  │  │ configs/*.json│ │              │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                        业务层 (Business)                     │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ BBSSpider    │  │ XindongSpider│  │ 其他爬虫      │      │
-│  │ (基础爬虫)   │  │ (Discuz适配) │  │ (可扩展)      │      │
+│  │ BBSSpider    │  │ DiscuzSpider │  │SpiderFactory │      │
+│  │ (基础爬虫)   │  │ PhpBBSpider  │  │ (工厂模式)   │      │
+│  │              │  │VBulletinSpider│ │ (统一创建)   │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 └─────────────────────────────────────────────────────────────┘
                               ↓
@@ -444,7 +448,7 @@ confidence = (基础分 × 一致性分 × 数量分) / 3
 
 #### 3.2.1 基础爬虫 (BBSSpider)
 
-**文件**: `bbs_spider.py`
+**文件**: `spider.py`
 
 **职责**:
 - 通用爬虫逻辑
@@ -453,61 +457,126 @@ confidence = (基础分 × 一致性分 × 数量分) / 3
 
 **类图**:
 ```
-BBSSpider
-├── __init__()
-├── init() / close()
-├── fetch_page()
-├── crawl_board()
-├── crawl_thread()
-├── download_thread_images()
+BBSSpider (基类)
+├── __init__(config, url, preset)
+├── init() / close() / __aenter__ / __aexit__
+├── fetch_page(url)
+├── crawl_board(board_url, board_name, max_pages)
+├── crawl_thread(thread_info)
+├── crawl_threads_from_list(thread_urls)
+├── download_thread_images(thread_data)
+├── process_images(images)  # 钩子方法，子类可重写
 └── get_statistics()
 ```
 
-#### 3.2.2 心动论坛爬虫 (XindongSpider)
+#### 3.2.2 论坛特定爬虫 (DiscuzSpider等)
 
-**文件**: `crawl_xindong.py`
+**文件**: `spider.py`
 
 **职责**:
 - 继承BBSSpider
-- Discuz特殊处理
-- 附件链接处理
+- 实现论坛特定处理逻辑
+- 重写钩子方法
 
 **扩展点**:
 ```python
-class XindongSpider(BBSSpider):
-    async def process_discuz_images(self, images):
+class DiscuzSpider(BBSSpider):
+    async def process_images(self, images):
         """处理Discuz的附件链接"""
         # 添加 &nothumb=yes 参数
         # 转换相对路径
+        # 返回处理后的图片列表
+
+class PhpBBSpider(BBSSpider):
+    # phpBB特定处理
+
+class VBulletinSpider(BBSSpider):
+    # vBulletin特定处理
+```
+
+#### 3.2.3 爬虫工厂 (SpiderFactory)
+
+**文件**: `spider.py`
+
+**职责**:
+- 统一创建爬虫实例
+- 根据论坛类型选择合适的爬虫类
+- 支持自定义爬虫注册
+
+**工厂模式**:
+```python
+class SpiderFactory:
+    _registry = {
+        'discuz': DiscuzSpider,
+        'phpbb': PhpBBSpider,
+        'vbulletin': VBulletinSpider,
+        'generic': BBSSpider,
+    }
+    
+    @classmethod
+    def register(cls, forum_type, spider_class):
+        """注册新的爬虫类型"""
+        
+    @classmethod
+    def create(cls, config=None, url=None, preset=None):
+        """创建爬虫实例（根据forum_type选择类）"""
 ```
 
 ### 3.3 应用模块
 
-#### 3.3.1 配置管理
+#### 3.3.1 配置管理 (v2.1 统一架构)
 
-**文件**: `config.py`, `config_xindong.py`
+**文件**: `config.py`, `configs/*.json`
 
 **设计**:
 ```python
 # 使用Pydantic进行类型验证和配置管理
 class BBSConfig(BaseModel):
-    base_url: str = Field(...)
-    thread_list_selector: str = Field(...)
+    name: str
+    forum_type: str
+    base_url: str
+    thread_list_selector: str
     # ... 自动类型验证
 
 class Config(BaseModel):
     bbs: BBSConfig
     crawler: CrawlerConfig
     image: ImageConfig
-    # ... 组合配置
+    database: DatabaseConfig
+    logging: LoggingConfig
 ```
 
-**配置优先级**:
+**配置来源**:
+```python
+# 1. 论坛类型预设（通用配置）
+ForumPresets.discuz()
+ForumPresets.phpbb()
+ForumPresets.vbulletin()
+
+# 2. 外部配置文件（特定论坛）
+get_example_config("xindong")      # 加载 configs/xindong.json
+get_example_config("myforum")      # 加载 configs/myforum.json
+
+# 3. 自动检测
+ConfigLoader.auto_detect_config(url)  # 智能检测论坛类型
+```
+
+**配置加载流程**:
 ```
 1. 命令行参数（最高优先级）
-2. 环境变量 (.env)
-3. 配置文件 (config.py)
-4. 默认值（最低优先级）
+   --config NAME / --preset TYPE / --auto-detect
+
+2. 外部JSON文件 (configs/*.json)
+   自动加载板块、URL、选择器等配置
+
+3. 论坛类型预设 (ForumPresets)
+   Discuz/phpBB/vBulletin通用配置
+
+4. 自动检测 (ConfigLoader)
+   智能分析HTML结构，生成配置
+
+5. 默认值（最低优先级）
+   config.py中的默认配置
 ```
 
 ---
@@ -599,31 +668,64 @@ class Downloader(ABC):
 
 ### 5.2 外部接口
 
-#### CLI接口
+#### CLI接口 (v2.1 子命令模式)
+
 ```bash
 # 基础用法
-python crawl_xindong.py [--mode MODE]
+spider.py <subcommand> [options]
 
-# 参数
---mode INT    运行模式 1=单帖子 2=板块 3=批量 (默认:1)
+# 子命令
+crawl-url       爬取单个URL
+crawl-urls      爬取配置中的URL列表
+crawl-board     爬取单个板块
+crawl-boards    爬取配置中的所有板块
 
-# 环境变量
-BBS_BASE_URL          论坛地址
-MAX_CONCURRENT        最大并发数
-DOWNLOAD_DELAY        下载延迟
+# 配置选项（互斥组）
+--config NAME           使用配置文件 (configs/NAME.json)
+--preset TYPE           使用论坛类型预设 (discuz/phpbb/vbulletin)
+--auto-detect           自动检测论坛类型
+
+# 其他选项
+--max-pages N           板块最大页数（默认：不限制）
+
+# 示例
+spider.py crawl-url "https://bbs.com/thread/123" --auto-detect
+spider.py crawl-urls --config xindong
+spider.py crawl-board "https://bbs.com/forum?fid=21" --config xindong --max-pages 5
+spider.py crawl-boards --config xindong
+
+# 环境变量（向后兼容）
+CONFIG                论坛配置名
+MODE                  处理模式（已废弃，建议使用子命令）
 ```
 
-#### Python API
-```python
-# 编程接口
-from bbs_spider import BBSSpider
+#### Python API (v2.1 统一架构)
 
-async with BBSSpider() as spider:
+```python
+# 编程接口（推荐使用工厂模式）
+from spider import SpiderFactory
+from config import get_example_config
+
+# 方式1: 使用配置文件
+config = get_example_config("xindong")
+async with SpiderFactory.create(config=config) as spider:
     await spider.crawl_thread({
         'url': '...',
         'thread_id': '123'
     })
     stats = spider.get_statistics()
+
+# 方式2: 使用论坛类型预设
+async with SpiderFactory.create(preset="discuz") as spider:
+    await spider.crawl_board(
+        board_url="...",
+        board_name="板块名",
+        max_pages=None  # 不限制，爬取所有页
+    )
+
+# 方式3: 自动检测
+async with SpiderFactory.create(url="https://forum.com") as spider:
+    await spider.crawl_threads_from_list(urls)
 ```
 
 ---

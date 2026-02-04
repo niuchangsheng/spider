@@ -2,28 +2,52 @@
 
 一个功能完善的BBS论坛图片爬虫系统，支持自动化爬取、图片去重、智能选择器检测等功能。
 
-**项目状态**: 🟢 正常运行 | **最后更新**: 2026-02-03 | **架构**: v2.0 重构版
+**项目状态**: 🟢 正常运行 | **最后更新**: 2026-02-04 | **架构**: v2.1 子命令模式 ⭐
 
 ---
 
-## 🆕 架构升级 (v2.0)
+## 🆕 架构升级 (v2.1) 🎉
 
-> **重要**: 项目已重构为统一架构，推荐使用新的 `spider.py` 和预设配置系统！
+> **重大升级**: CLI接口全面重构，采用子命令模式，更清晰、更易用！
 
-### 新特性
+### v2.1 新特性 (2026-02-04)
+
+- ✅ **子命令模式** - `spider.py crawl-url/crawl-urls/crawl-board/crawl-boards`
+- ✅ **意图明确** - 命令名称直接表达功能，告别 `--mode 1/2`
+- ✅ **参数清晰** - 互斥组、位置参数、职责分离
+- ✅ **符合直觉** - 类似 git/docker 的CLI设计，学习成本低
+- ✅ **易于扩展** - 可轻松添加新的子命令
+
+### v2.0 特性 (2026-02-03)
 
 - ✅ **统一爬虫架构** - `spider.py` 整合所有爬虫逻辑
-- ✅ **预设配置系统** - `ForumPresets.xindong()` 等开箱即用
+- ✅ **预设配置系统** - `ForumPresets` + JSON配置文件
 - ✅ **自动检测配置** - `ConfigLoader.auto_detect(url)` 智能识别论坛
-- ✅ **工厂模式** - `SpiderFactory.create(preset="xindong")` 统一创建
-- ✅ **代码精简** - 减少25%代码量，更易维护
+- ✅ **工厂模式** - `SpiderFactory.create()` 统一创建
+- ✅ **代码精简** - 减少50%代码量，更易维护
+
+### CLI对比 (v2.1 重大变更)
+
+| 功能 | v1.x 方式 | v2.0 方式 | v2.1 方式 ⭐ |
+|------|----------|----------|-------------|
+| 爬取URL列表 | `crawl_xindong.py` (选项1) | `spider.py --config xindong --mode 1` | `spider.py crawl-urls --config xindong` |
+| 爬取板块 | `crawl_xindong.py` (选项2) | `spider.py --config xindong --mode 2` | `spider.py crawl-boards --config xindong` |
+| 爬取单个URL | N/A | `spider.py --url "..." --mode 1` | `spider.py crawl-url "..." --auto-detect` |
+| 爬取单个板块 | N/A | `spider.py --url "..." --mode 2` | `spider.py crawl-board "..." --config xindong` |
+| 限制页数 | 硬编码 | `--max-pages 5` | `crawl-board/crawl-boards --max-pages 5` |
+
+**v2.1 优势**:
+- ✅ **意图明确**: `crawl-url` vs `crawl-board` 一目了然
+- ✅ **参数清晰**: `--max-pages` 只在相关命令出现
+- ✅ **易于记忆**: 类似 `git commit`, `docker run` 的风格
+- ✅ **无歧义**: 告别 `--mode 1/2` 的困惑
 
 ### API对比
 
-#### 创建爬虫实例
+#### 创建爬虫实例 (Python API)
 
-| 场景 | 旧方式 | 新方式 |
-|------|--------|--------|
+| 场景 | v1.x | v2.0/v2.1 |
+|------|------|-----------|
 | 通用爬虫 | `BBSSpider()` | `SpiderFactory.create(preset="discuz")` |
 | 心动论坛 | `XindongSpider()` | `SpiderFactory.create(config=get_example_config("xindong"))` |
 | 自动检测 | 手动运行 `detect_selectors.py` | `SpiderFactory.create(url="...")` |
@@ -31,14 +55,14 @@
 
 #### 配置管理
 
-**旧方式**:
+**v1.x方式**:
 ```python
 from config_xindong import xindong_config
 import config as config_module
 config_module.config = xindong_config  # 全局修改
 ```
 
-**新方式**:
+**v2.0/v2.1方式**:
 ```python
 from config import ForumPresets, get_example_config
 
@@ -46,11 +70,34 @@ from config import ForumPresets, get_example_config
 config = ForumPresets.discuz()
 config = ForumPresets.phpbb()
 
-# 使用具体论坛实例（如心动论坛）
-config = get_example_config("xindong")
+# 使用具体论坛实例（推荐）
+config = get_example_config("xindong")   # 自动加载 configs/xindong.json
+config = get_example_config("myforum")   # 自动加载 configs/myforum.json
 ```
 
-### 快速迁移（3步）
+### 快速迁移
+
+#### v2.0 → v2.1 迁移 (CLI命令)
+
+```bash
+# 步骤1: 更新命令行调用
+# 旧: spider.py --config xindong --mode 1
+# 新: spider.py crawl-urls --config xindong
+
+# 旧: spider.py --config xindong --mode 2 --max-pages 5
+# 新: spider.py crawl-boards --config xindong --max-pages 5
+
+# 旧: spider.py --url "..." --mode 1
+# 新: spider.py crawl-url "..." --auto-detect
+
+# 步骤2: 更新自动化脚本（如 run_spider.sh）
+# 替换所有 --mode 参数为相应的子命令
+
+# 步骤3: Python API 保持不变 ✅
+# 编程接口完全兼容，无需修改代码
+```
+
+#### v1.x → v2.1 迁移 (Python API)
 
 ```python
 # 步骤1: 更新导入
@@ -63,10 +110,12 @@ config = get_example_config("xindong")
 # 新: config = get_example_config("xindong")
 #     async with SpiderFactory.create(config=config) as spider:
 
-# 步骤3: 爬取逻辑保持不变
+# 步骤3: 爬取逻辑保持不变 ✅
 await spider.crawl_thread(thread_info)  # ✅ API兼容
-await spider.crawl_board(...)  # ✅ API兼容
+await spider.crawl_board(...)           # ✅ API兼容
 ```
+
+详见迁移文档：`docs/designs/2026-02-04-implement-subcommand-mode.md`
 
 ### 功能对照表
 
@@ -166,23 +215,22 @@ async with SpiderFactory.create(preset="myforum") as spider:
 ```bash
 cd /home/chang/spider
 
-# 默认运行（心动论坛，URL列表模式）
-./run_spider.sh
+# v2.1 新命令（子命令模式）
+./run_spider.sh crawl-urls --config xindong         # 爬取配置中的URLs
+./run_spider.sh crawl-boards --config xindong       # 爬取配置中的所有板块
+./run_spider.sh crawl-url "https://bbs.com/thread/123" --auto-detect  # 爬取单个URL
+./run_spider.sh crawl-board "https://bbs.com/forum?fid=21" --config xindong --max-pages 5  # 爬取板块
 
-# 自定义参数
-./run_spider.sh --config xindong --mode 2      # 板块模式
-./run_spider.sh --preset discuz --mode 1        # 使用论坛类型
-./run_spider.sh --url "https://forum.com"      # 自动检测
-
-# 使用环境变量
-CONFIG=xindong MODE=2 ./run_spider.sh
+# v2.0 旧命令（仍然支持，但已废弃）
+./run_spider.sh --config xindong --mode 1           # 废弃，请使用 crawl-urls
+./run_spider.sh --config xindong --mode 2           # 废弃，请使用 crawl-boards
 ```
 
 自动脚本会：
 - ✅ 检查并创建虚拟环境
 - ✅ 自动安装依赖
 - ✅ 激活虚拟环境
-- ✅ 运行爬虫（支持所有spider.py参数）
+- ✅ 运行爬虫（支持所有spider.py子命令和参数）
 
 ### 方法2：手动安装
 
@@ -219,17 +267,20 @@ pip install requests aiohttp beautifulsoup4 lxml Pillow loguru fake-useragent te
 #### 步骤3：运行爬虫
 
 ```bash
-# 使用新的统一架构（推荐）
-python spider.py --config xindong --mode 1  # 配置文件 + URL列表模式
-python spider.py --config xindong --mode 2  # 配置文件 + 板块模式
-python spider.py --preset discuz --mode 1   # 论坛类型 + URL模式
+# v2.1 子命令模式（推荐）✅
+python spider.py crawl-urls --config xindong                     # 爬取配置中的URLs
+python spider.py crawl-boards --config xindong                   # 爬取配置中的所有板块
+python spider.py crawl-url "https://bbs.com/thread/123" --auto-detect  # 爬取单个URL
+python spider.py crawl-board "https://bbs.com/forum?fid=21" --config xindong --max-pages 5
 
-# 自动检测配置
-python spider.py --url "https://forum.com/board" --mode 1
+# 使用论坛类型预设
+python spider.py crawl-url "https://discuz-forum.com/thread/123" --preset discuz
+python spider.py crawl-board "https://phpbb-forum.com/viewforum.php?f=10" --preset phpbb
 
-# 自定义URL/板块
-python spider.py --config xindong --mode 1 --urls "url1,url2,url3"
-python spider.py --config xindong --mode 2 --max-pages 5
+# 查看帮助
+python spider.py --help                    # 主帮助
+python spider.py crawl-url --help          # 子命令帮助
+python spider.py crawl-boards --help       # 子命令帮助
 ```
 
 #### 步骤4：查看结果
@@ -273,18 +324,20 @@ deactivate
 - 论坛类型识别
 - 置信度评估
 
-### 快速使用
+### 快速使用 (v2.1)
 
 ```bash
-# 方式1: 使用 spider.py 自动检测（推荐）
-python spider.py --url "https://your-forum.com/board/1"
+# 方式1: 使用子命令自动检测（推荐）
+python spider.py crawl-url "https://your-forum.com/thread/123" --auto-detect
+python spider.py crawl-board "https://your-forum.com/board/1" --auto-detect
 
 # 方式2: 在代码中使用
 from config import ConfigLoader
 config = await ConfigLoader.auto_detect_config("https://your-forum.com/board/1")
 
-# 示例：检测心动论坛
-python spider.py --url "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21"
+# 示例：自动检测心动论坛
+python spider.py crawl-url "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145" --auto-detect
+python spider.py crawl-board "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21" --auto-detect --max-pages 10
 ```
 
 **检测结果示例**：
@@ -345,20 +398,30 @@ BBSConfig(
 - **论坛系统**: Discuz! X3.4
 - **主要板块**: 神仙道、仙境传说等游戏讨论区
 
-### 快速使用
+### 快速使用 (v2.1)
 
 ```bash
-# 使用统一架构
-python spider.py --config xindong --mode 1  # URL列表模式
-python spider.py --config xindong --mode 2  # 板块模式（默认爬取所有页）
+# 爬取配置中的URL列表
+python spider.py crawl-urls --config xindong
 
-# 模式说明：
-# --mode 1: 批量爬取URL列表（并发）
-# --mode 2: 批量爬取板块列表（并发，默认爬取所有页）
+# 爬取配置中的所有板块（默认：所有页）
+python spider.py crawl-boards --config xindong
 
-# 限制页数（可选）：
-python spider.py --config xindong --mode 2 --max-pages 5  # 只爬前5页
+# 爬取配置中的所有板块（限制页数）
+python spider.py crawl-boards --config xindong --max-pages 5  # 只爬前5页
+
+# 爬取单个帖子
+python spider.py crawl-url "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145" --config xindong
+
+# 爬取单个板块
+python spider.py crawl-board "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21" --config xindong --max-pages 10
 ```
+
+**命令解释**:
+- `crawl-urls`: 批量爬取URL列表（并发）
+- `crawl-boards`: 批量爬取板块列表（并发，默认爬取所有页）
+- `crawl-url`: 爬取单个帖子URL
+- `crawl-board`: 爬取单个板块（可限制页数）
 
 ### Discuz论坛特点
 
@@ -1111,6 +1174,9 @@ MIT License
 
 ---
 
-**项目版本**: v1.5  
-**最后更新**: 2026-02-03  
+**项目版本**: v2.1 (子命令模式)  
+**最后更新**: 2026-02-04  
 **维护状态**: 🟢 活跃维护
+
+**重要提示**: v2.1 是重大升级，CLI接口已全面重构。  
+详见设计文档: `docs/designs/2026-02-04-interface-review.md`
