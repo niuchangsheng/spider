@@ -3,6 +3,7 @@ BBS图片爬虫 - 统一架构
 支持多种论坛系统：Discuz、phpBB、vBulletin等
 """
 import asyncio
+import argparse
 import sys
 import aiohttp
 from typing import List, Dict, Any, Optional, Type
