@@ -132,7 +132,7 @@ async def handle_crawl_url(args):
     # 1. 加载配置
     if args.auto_detect:
         logger.info(f"🌐 自动检测配置: {args.url}")
-        config = await ConfigLoader.auto_detect_config(args.url)
+        config = ConfigLoader.auto_detect(args.url)
     elif args.preset:
         logger.info(f"📋 使用论坛类型预设: {args.preset}")
         config = ConfigLoader.load(args.preset)
@@ -225,7 +225,7 @@ async def handle_crawl_board(args):
     # 1. 加载配置
     if args.auto_detect:
         logger.info(f"🌐 自动检测配置: {args.board_url}")
-        config = await ConfigLoader.auto_detect_config(args.board_url)
+        config = ConfigLoader.auto_detect(args.board_url)
     elif args.preset:
         logger.info(f"📋 使用论坛类型预设: {args.preset}")
         config = ConfigLoader.load(args.preset)
