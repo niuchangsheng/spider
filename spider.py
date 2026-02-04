@@ -303,7 +303,11 @@ class BBSSpider:
                     
                     # 保存图片记录
                     storage.save_image_record(result)
+                elif result.get('skipped'):
+                    # 被跳过的图片（已存在/尺寸不符等）
+                    self.stats['duplicates_skipped'] += 1
                 else:
+                    # 真正下载失败的图片
                     self.stats['images_failed'] += 1
     
     async def crawl_threads_from_list(self, thread_urls: List[str]):
@@ -559,6 +563,8 @@ async def main():
     
     # 1. 加载配置
     config_name = None
+    url_from_arg = None  # 记录从--url参数传入的URL
+    
     if args.config:
         logger.info(f"📁 使用配置文件: {args.config}")
         config = get_example_config(args.config)
@@ -569,6 +575,7 @@ async def main():
     elif args.url:
         logger.info(f"🌐 自动检测配置: {args.url}")
         config = await ConfigLoader.auto_detect_config(args.url)
+        url_from_arg = args.url  # 保存URL用于后续爬取
     else:
         # 默认使用 xindong
         logger.info("📁 使用默认配置: xindong")
@@ -586,9 +593,15 @@ async def main():
             
             # 获取URL列表
             if args.urls:
+                # 优先使用 --urls 参数（逗号分隔的多个URL）
                 urls = [u.strip() for u in args.urls.split(',')]
                 logger.info(f"📝 使用命令行URL: {len(urls)} 个")
+            elif url_from_arg:
+                # 使用 --url 参数（单个URL）
+                urls = [url_from_arg]
+                logger.info(f"📝 使用指定URL: {url_from_arg}")
             elif config_name:
+                # 从配置文件加载
                 urls = get_forum_urls(config_name)
                 logger.info(f"📝 从配置文件加载URL: {len(urls)} 个")
             else:
