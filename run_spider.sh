@@ -1,15 +1,31 @@
 #!/bin/bash
-# BBS论坛爬虫启动脚本（v2.0）
+# BBS论坛爬虫启动脚本（v2.1 - 子命令模式）
 # 自动激活虚拟环境并运行
+#
+# 使用示例:
+#   ./run_spider.sh                                    # 默认: crawl-urls --config xindong
+#   ./run_spider.sh crawl-boards --config xindong     # 爬取所有板块
+#   ./run_spider.sh crawl-url "https://..." --auto-detect  # 爬取单个URL
+#   CONFIG=xindong SUBCOMMAND=crawl-boards ./run_spider.sh # 使用环境变量
+#
+# 环境变量:
+#   CONFIG      - 配置文件名 (默认: xindong)
+#   SUBCOMMAND  - 子命令 (默认: crawl-urls)
+#
+# v2.1 子命令:
+#   crawl-url       - 爬取单个URL
+#   crawl-urls      - 爬取配置中的URL列表
+#   crawl-board     - 爬取单个板块
+#   crawl-boards    - 爬取配置中的所有板块
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "=================================="
-echo "BBS论坛爬虫启动脚本 (v2.0)"
-echo "=================================="
+echo "=========================================="
+echo "🕷️  BBS论坛爬虫启动脚本 (v2.1)"
+echo "=========================================="
 echo ""
 
 # 检查虚拟环境是否存在
@@ -49,33 +65,37 @@ if ! python -c "import requests" 2>/dev/null; then
 fi
 
 # 运行爬虫
-echo "=================================="
-echo "启动爬虫..."
-echo "=================================="
+echo "=========================================="
+echo "🚀 启动爬虫..."
+echo "=========================================="
 echo ""
 
-# 默认参数
+# 默认参数（v2.1 子命令模式）
 CONFIG="${CONFIG:-xindong}"
-MODE="${MODE:-1}"
+SUBCOMMAND="${SUBCOMMAND:-crawl-urls}"  # 默认子命令
 
 # 支持传入命令行参数
 if [ $# -gt 0 ]; then
     # 如果有参数，直接传递给 spider.py
-    echo "运行命令: python spider.py $@"
+    echo "▶️  运行命令: python spider.py $@"
+    echo ""
     python spider.py "$@"
 else
-    # 否则使用默认配置
-    echo "运行命令: python spider.py --config $CONFIG --mode $MODE"
-    echo "提示: 可以设置环境变量 CONFIG 和 MODE 来改变默认行为"
-    echo "      或直接传参: ./run_spider.sh --config xindong --mode 2"
+    # 否则使用默认配置（v2.1 子命令模式）
+    echo "▶️  运行命令: python spider.py $SUBCOMMAND --config $CONFIG"
     echo ""
-    python spider.py --config "$CONFIG" --mode "$MODE"
+    echo "💡 提示:"
+    echo "   • 使用环境变量: CONFIG=xindong SUBCOMMAND=crawl-boards ./run_spider.sh"
+    echo "   • 直接传参: ./run_spider.sh crawl-boards --config xindong --max-pages 5"
+    echo "   • 查看帮助: ./run_spider.sh --help"
+    echo ""
+    python spider.py "$SUBCOMMAND" --config "$CONFIG"
 fi
 
 # 退出虚拟环境
 deactivate
 
 echo ""
-echo "=================================="
-echo "爬虫运行完成"
-echo "=================================="
+echo "=========================================="
+echo "✅ 爬虫运行完成"
+echo "=========================================="
