@@ -3,20 +3,25 @@
 用于爬取使用Ajax异步加载内容的新闻/公告页面
 """
 import asyncio
-from typing import List, Dict, Optional
+import sys
+from typing import List, Dict, Optional, TYPE_CHECKING
 from loguru import logger
 from pathlib import Path
 
 from config import Config
 from core.dynamic_parser import DynamicPageParser
 
+# 避免循环导入
+if TYPE_CHECKING:
+    from spider import BaseSpider
+
 
 class DynamicNewsCrawler:
     """
     动态新闻页面爬虫
     
-    专门用于爬取通过Ajax/JavaScript动态加载内容的新闻页面，
-    如游戏官网公告、新闻列表等。
+    继承 BaseSpider 的设计理念，但为了避免循环导入，
+    采用组合方式复用基础功能。
     
     特点：
     - 支持Ajax方式快速爬取
@@ -45,9 +50,12 @@ class DynamicNewsCrawler:
         self.config = config
         self.parser = DynamicPageParser(config)
         self.session = None
+        self.ua = None
         
-        # 统计信息
+        # 统计信息（与 BaseSpider 保持一致的结构）
         self.stats = {
+            'pages_fetched': 0,       # 基础统计
+            'requests_failed': 0,     # 基础统计
             'articles_found': 0,      # 发现的文章数
             'articles_crawled': 0,    # 成功爬取的文章数
             'articles_failed': 0,     # 失败的文章数
@@ -59,29 +67,47 @@ class DynamicNewsCrawler:
     
     async def __aenter__(self):
         """异步上下文管理器入口"""
-        import aiohttp
-        from fake_useragent import UserAgent
-        
-        ua = UserAgent()
-        headers = {
-            "User-Agent": ua.random if self.config.crawler.rotate_user_agent else ua.chrome,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        }
-        
-        self.session = aiohttp.ClientSession(
-            headers=headers,
-            timeout=aiohttp.ClientTimeout(total=self.config.crawler.request_timeout)
-        )
-        
-        logger.debug("✓ HTTP会话已创建")
+        await self.init()
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器出口"""
+        await self.close()
+    
+    async def init(self):
+        """初始化爬虫"""
+        import aiohttp
+        from fake_useragent import UserAgent
+        
+        logger.info("⚙️  初始化爬虫组件...")
+        
+        self.ua = UserAgent()
+        
+        # 创建HTTP会话
+        timeout = aiohttp.ClientTimeout(total=self.config.crawler.request_timeout)
+        self.session = aiohttp.ClientSession(timeout=timeout)
+        
+        logger.debug("✓ HTTP会话已创建")
+    
+    async def close(self):
+        """关闭爬虫"""
+        logger.info("🔒 关闭爬虫...")
+        
         if self.session:
             await self.session.close()
             logger.debug("✓ HTTP会话已关闭")
+        
+        logger.info(f"📊 爬虫统计: {self.get_statistics()}")
+    
+    def get_headers(self) -> Dict[str, str]:
+        """获取请求头"""
+        return {
+            "User-Agent": self.ua.random if self.config.crawler.rotate_user_agent else self.ua.chrome,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+        }
     
     async def fetch_page(self, url: str, headers: Optional[Dict] = None, is_ajax: bool = False) -> Optional[str]:
         """
@@ -98,8 +124,10 @@ class DynamicNewsCrawler:
         try:
             logger.debug(f"📄 获取页面: {url} (Ajax: {is_ajax})")
             
+            # 获取基础请求头
+            request_headers = self.get_headers()
+            
             # 合并自定义 headers
-            request_headers = {}
             if headers:
                 request_headers.update(headers)
             
@@ -109,6 +137,7 @@ class DynamicNewsCrawler:
             
             async with self.session.get(url, headers=request_headers) as response:
                 if response.status == 200:
+                    self.stats['pages_fetched'] += 1
                     html = await response.text()
                     await asyncio.sleep(self.config.crawler.download_delay)
                     return html
@@ -117,9 +146,11 @@ class DynamicNewsCrawler:
                     return None
         
         except asyncio.TimeoutError:
+            self.stats['requests_failed'] += 1
             logger.error(f"❌ 超时: {url}")
             return None
         except Exception as e:
+            self.stats['requests_failed'] += 1
             logger.error(f"❌ 获取失败 {url}: {e}")
             return None
     
@@ -435,6 +466,8 @@ class DynamicNewsCrawler:
     def get_statistics(self) -> Dict:
         """
         获取统计信息
+        
+        与 BaseSpider.get_statistics() 保持一致的接口
         
         Returns:
             统计信息字典

@@ -1,6 +1,13 @@
 """
-BBS图片爬虫 - 统一架构
+BBS图片爬虫 - 统一架构 v2.3
 支持多种论坛系统：Discuz、phpBB、vBulletin等
+支持动态新闻页面爬取
+
+架构:
+- BaseSpider: 爬虫基类，提供公共功能
+- BBSSpider: BBS论坛爬虫
+- DynamicNewsCrawler: 动态页面爬虫（在 core/dynamic_crawler.py）
+- SpiderFactory: 爬虫工厂，统一创建
 """
 import asyncio
 import argparse
@@ -8,6 +15,7 @@ import sys
 import aiohttp
 import re
 import os
+from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Type
 from urllib.parse import urlparse
 from loguru import logger
@@ -66,16 +74,160 @@ def _extract_image_filename(url: str) -> str:
         return f"{hash_name}.jpg"
 
 
-class BBSSpider:
+# ============================================================================
+# 爬虫基类
+# ============================================================================
+
+class BaseSpider(ABC):
     """
-    BBS图片爬虫基类
+    爬虫基类
     
-    提供通用的爬取逻辑，子类可重写特定方法实现论坛特定处理
+    所有爬虫的公共基类，提供：
+    - HTTP Session 管理
+    - 页面获取
+    - 统计信息
+    - 异步上下文管理
+    
+    子类需要实现:
+    - get_statistics(): 获取统计信息
+    """
+    
+    def __init__(self, config: Config):
+        """
+        初始化爬虫
+        
+        Args:
+            config: 配置对象
+        """
+        self.config = config
+        self.session: Optional[aiohttp.ClientSession] = None
+        self.ua = UserAgent()
+        
+        # 基础统计信息
+        self.stats = {
+            'pages_fetched': 0,
+            'requests_failed': 0,
+        }
+    
+    async def __aenter__(self):
+        """异步上下文管理器入口"""
+        await self.init()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """异步上下文管理器出口"""
+        await self.close()
+    
+    async def init(self):
+        """
+        初始化爬虫
+        
+        子类应该调用 super().init() 并添加特定初始化逻辑
+        """
+        logger.info("⚙️  初始化爬虫组件...")
+        
+        # 初始化HTTP会话
+        timeout = aiohttp.ClientTimeout(total=self.config.crawler.request_timeout)
+        self.session = aiohttp.ClientSession(timeout=timeout)
+    
+    async def close(self):
+        """
+        关闭爬虫
+        
+        子类应该先执行特定清理逻辑，再调用 super().close()
+        """
+        logger.info("🔒 关闭爬虫...")
+        
+        if self.session:
+            await self.session.close()
+        
+        logger.info(f"📊 爬虫统计: {self.get_statistics()}")
+    
+    def get_headers(self) -> Dict[str, str]:
+        """
+        获取请求头
+        
+        子类可重写此方法添加特定请求头
+        """
+        headers = {
+            "User-Agent": self.ua.random if self.config.crawler.rotate_user_agent else self.ua.chrome,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+        }
+        
+        if self.config.bbs.base_url:
+            headers["Referer"] = self.config.bbs.base_url
+        
+        return headers
+    
+    async def fetch_page(self, url: str, headers: Optional[Dict] = None) -> Optional[str]:
+        """
+        获取页面内容
+        
+        Args:
+            url: 页面URL
+            headers: 可选的额外请求头
+        
+        Returns:
+            HTML内容，失败返回None
+        """
+        try:
+            logger.debug(f"📄 获取页面: {url}")
+            
+            request_headers = self.get_headers()
+            if headers:
+                request_headers.update(headers)
+            
+            async with self.session.get(url, headers=request_headers) as response:
+                if response.status == 200:
+                    self.stats['pages_fetched'] += 1
+                    html = await response.text()
+                    await asyncio.sleep(self.config.crawler.download_delay)
+                    return html
+                else:
+                    logger.warning(f"⚠️  获取失败 {url}: HTTP {response.status}")
+                    return None
+        
+        except asyncio.TimeoutError:
+            self.stats['requests_failed'] += 1
+            logger.error(f"❌ 超时: {url}")
+            return None
+        except Exception as e:
+            self.stats['requests_failed'] += 1
+            logger.error(f"❌ 获取出错 {url}: {e}")
+            return None
+    
+    @abstractmethod
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        获取统计信息
+        
+        子类必须实现此方法
+        """
+        pass
+
+
+# ============================================================================
+# BBS论坛爬虫
+# ============================================================================
+
+class BBSSpider(BaseSpider):
+    """
+    BBS论坛图片爬虫
+    
+    继承 BaseSpider，添加论坛特有功能：
+    - 帖子列表爬取
+    - 帖子详情爬取
+    - 图片下载和去重
+    
+    子类（如 DiscuzSpider）可重写 process_images() 实现论坛特定处理
     """
     
     def __init__(self, config: Optional[Config] = None, url: Optional[str] = None, preset: Optional[str] = None):
         """
-        初始化爬虫
+        初始化BBS爬虫
         
         Args:
             config: 手动配置（优先级最高）
@@ -101,48 +253,38 @@ class BBSSpider:
         """
         # 配置优先级: config > preset > url
         if config:
-            self.config = config
+            final_config = config
         elif preset:
-            self.config = ConfigLoader.load(preset)
+            final_config = ConfigLoader.load(preset)
         elif url:
-            self.config = ConfigLoader.auto_detect(url)
+            final_config = ConfigLoader.auto_detect(url)
         else:
             raise ValueError("必须提供 config、preset 或 url 参数之一")
         
+        # 调用基类初始化
+        super().__init__(final_config)
+        
+        # BBS特有组件
         self.parser = BBSParser()
         self.deduplicator = ImageDeduplicator(use_perceptual_hash=True)
-        self.ua = UserAgent()
-        self.session: Optional[aiohttp.ClientSession] = None
         
-        # 统计信息
-        self.stats = {
+        # BBS特有统计信息（扩展基类stats）
+        self.stats.update({
             "threads_crawled": 0,
             "images_found": 0,
             "images_downloaded": 0,
             "images_failed": 0,
             "duplicates_skipped": 0
-        }
+        })
         
         logger.info(f"🚀 初始化爬虫: {self.config.bbs.name} ({self.config.bbs.forum_type})")
     
-    async def __aenter__(self):
-        """异步上下文管理器"""
-        await self.init()
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """异步上下文管理器退出"""
-        await self.close()
-    
     async def init(self):
-        """初始化爬虫"""
-        logger.info("⚙️  初始化爬虫组件...")
+        """初始化BBS爬虫"""
+        # 调用基类初始化
+        await super().init()
         
-        # 初始化HTTP会话
-        timeout = aiohttp.ClientTimeout(total=self.config.crawler.request_timeout)
-        self.session = aiohttp.ClientSession(timeout=timeout)
-        
-        # 连接数据库
+        # BBS特有初始化
         storage.connect()
         
         # 加载已存在的文件哈希
@@ -152,50 +294,15 @@ class BBSSpider:
         logger.success("✅ 爬虫初始化完成")
     
     async def close(self):
-        """关闭爬虫"""
-        logger.info("🔒 关闭爬虫...")
-        
-        if self.session:
-            await self.session.close()
-        
+        """关闭BBS爬虫"""
+        # BBS特有清理
         storage.close()
         
-        # 输出统计信息
-        logger.info(f"📊 爬虫统计: {self.stats}")
+        # 输出去重统计
         logger.info(f"🔄 去重统计: {self.deduplicator.get_stats()}")
-    
-    def get_headers(self) -> Dict[str, str]:
-        """获取请求头"""
-        headers = {
-            "User-Agent": self.ua.random if self.config.crawler.rotate_user_agent else self.ua.chrome,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Accept-Encoding": "gzip, deflate",
-            "Connection": "keep-alive",
-        }
         
-        if self.config.bbs.base_url:
-            headers["Referer"] = self.config.bbs.base_url
-        
-        return headers
-    
-    async def fetch_page(self, url: str) -> Optional[str]:
-        """获取页面内容"""
-        try:
-            logger.debug(f"📄 获取页面: {url}")
-            
-            async with self.session.get(url, headers=self.get_headers()) as response:
-                if response.status == 200:
-                    html = await response.text()
-                    await asyncio.sleep(self.config.crawler.download_delay)
-                    return html
-                else:
-                    logger.warning(f"⚠️  获取失败 {url}: HTTP {response.status}")
-                    return None
-        
-        except Exception as e:
-            logger.error(f"❌ 获取出错 {url}: {e}")
-            return None
+        # 调用基类关闭
+        await super().close()
     
     async def process_images(self, images: List[str]) -> List[str]:
         """
@@ -375,12 +482,20 @@ class BBSSpider:
             await self.crawl_thread(thread_info)
     
     def get_statistics(self) -> Dict[str, Any]:
-        """获取统计信息"""
+        """
+        获取统计信息
+        
+        实现基类的抽象方法
+        """
         stats = self.stats.copy()
         stats['deduplication'] = self.deduplicator.get_stats()
         stats['storage'] = storage.get_statistics()
         return stats
 
+
+# ============================================================================
+# 论坛特定爬虫
+# ============================================================================
 
 class DiscuzSpider(BBSSpider):
     """
@@ -434,38 +549,64 @@ class VBulletinSpider(BBSSpider):
 # 爬虫工厂
 # ============================================================================
 
+# 延迟导入，避免循环依赖
+def _get_dynamic_crawler():
+    """延迟导入 DynamicNewsCrawler"""
+    from core.dynamic_crawler import DynamicNewsCrawler
+    return DynamicNewsCrawler
+
+
 class SpiderFactory:
     """
     爬虫工厂类
     
-    根据配置的论坛类型自动创建合适的爬虫实例
+    统一管理所有爬虫类型的创建：
+    - BBS类型: generic, discuz, phpbb, vbulletin
+    - 动态页面类型: dynamic
+    
+    继承关系:
+    - BaseSpider (抽象基类)
+      ├── BBSSpider (通用BBS爬虫)
+      │   ├── DiscuzSpider
+      │   ├── PhpBBSpider
+      │   └── VBulletinSpider
+      └── DynamicNewsCrawler (动态页面爬虫)
     """
     
-    # 爬虫类型注册表
-    _registry: Dict[str, Type[BBSSpider]] = {
+    # BBS爬虫类型注册表
+    _bbs_registry: Dict[str, Type[BBSSpider]] = {
+        'generic': BBSSpider,
         'discuz': DiscuzSpider,
         'phpbb': PhpBBSpider,
         'vbulletin': VBulletinSpider,
-        'generic': BBSSpider,
     }
+    
+    # 兼容旧版：保留 _registry 别名
+    _registry = _bbs_registry
     
     @classmethod
     def register(cls, forum_type: str, spider_class: Type[BBSSpider]):
         """
-        注册新的爬虫类型
+        注册新的BBS爬虫类型
         
         Args:
             forum_type: 论坛类型标识
-            spider_class: 爬虫类
+            spider_class: 爬虫类（必须继承 BBSSpider）
         
         Examples:
             SpiderFactory.register('mybb', MyBBSpider)
         """
-        cls._registry[forum_type] = spider_class
+        cls._bbs_registry[forum_type] = spider_class
         logger.info(f"✅ 注册爬虫类型: {forum_type} -> {spider_class.__name__}")
     
     @classmethod
-    def create(cls, config: Optional[Config] = None, url: Optional[str] = None, preset: Optional[str] = None) -> BBSSpider:
+    def create(
+        cls, 
+        config: Optional[Config] = None, 
+        url: Optional[str] = None, 
+        preset: Optional[str] = None,
+        spider_type: str = 'bbs'
+    ):
         """
         创建爬虫实例（工厂方法）
         
@@ -473,14 +614,17 @@ class SpiderFactory:
             config: 配置对象（优先级最高）
             url: 论坛URL，自动检测配置
             preset: 论坛类型预设 (discuz/phpbb/vbulletin)
+            spider_type: 爬虫类型 ('bbs' 或 'dynamic')
         
         Returns:
-            对应类型的爬虫实例 (BBSSpider 或其子类)
+            爬虫实例:
+            - spider_type='bbs': BBSSpider 或其子类
+            - spider_type='dynamic': DynamicNewsCrawler
         
         Examples:
             # ✅ 方式1: 使用配置文件（推荐）
             from config import get_example_config
-            config = get_example_config("xindong")  # 自动加载 configs/xindong.json
+            config = get_example_config("xindong")
             spider = SpiderFactory.create(config=config)
             
             # ✅ 方式2: 使用论坛类型预设
@@ -489,7 +633,10 @@ class SpiderFactory:
             # ✅ 方式3: 自动检测论坛类型
             spider = SpiderFactory.create(url="https://forum.com/board")
             
-            # ✅ 方式4: 完全自定义配置
+            # ✅ 方式4: 创建动态页面爬虫
+            spider = SpiderFactory.create(config=config, spider_type='dynamic')
+            
+            # ✅ 方式5: 完全自定义配置
             from config import Config
             custom_config = Config(bbs={...}, crawler={...})
             spider = SpiderFactory.create(config=custom_config)
@@ -504,13 +651,35 @@ class SpiderFactory:
         else:
             raise ValueError("必须提供 config、preset 或 url 参数之一")
         
-        # 根据forum_type选择爬虫类
+        # 根据 spider_type 选择爬虫类型
+        if spider_type == 'dynamic':
+            DynamicNewsCrawler = _get_dynamic_crawler()
+            logger.info(f"🏭 创建爬虫: DynamicNewsCrawler")
+            return DynamicNewsCrawler(config=final_config)
+        
+        # BBS爬虫：根据 forum_type 选择具体子类
         forum_type = final_config.bbs.forum_type.lower()
-        spider_class = cls._registry.get(forum_type, BBSSpider)
+        spider_class = cls._bbs_registry.get(forum_type, BBSSpider)
         
         logger.info(f"🏭 创建爬虫: {spider_class.__name__}")
         
         return spider_class(config=final_config)
+    
+    @classmethod
+    def create_dynamic(cls, config: Config):
+        """
+        创建动态页面爬虫（便捷方法）
+        
+        Args:
+            config: 配置对象
+        
+        Returns:
+            DynamicNewsCrawler 实例
+        
+        Example:
+            crawler = SpiderFactory.create_dynamic(config)
+        """
+        return cls.create(config=config, spider_type='dynamic')
 
 
 # ============================================================================

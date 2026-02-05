@@ -4,23 +4,23 @@
 """
 from typing import List, Dict, Optional
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 from loguru import logger
+import re
 
-from core.parser import BBSParser
+from core.parser import BaseParser
 
 
-class DynamicPageParser(BBSParser):
+class DynamicPageParser(BaseParser):
     """
     动态页面解析器
     
-    专门用于解析通过Ajax/JavaScript动态加载内容的网页，
-    如新闻列表、公告页面等。
-    
-    主要功能：
+    继承 BaseParser，添加动态页面特有功能：
     - 解析文章列表
     - 提取文章基本信息（标题、作者、日期、摘要、链接）
     - 检测"查看更多"按钮及其加载参数
     - 支持多种日期格式（相对时间、绝对时间）
+    - 原图URL智能提取
     
     Example:
         parser = DynamicPageParser(config)
@@ -35,9 +35,9 @@ class DynamicPageParser(BBSParser):
         Args:
             config: 配置对象，包含选择器等信息
         """
-        super().__init__()
+        super().__init__(config)
         
-        # 保存config引用
+        # 保存config引用（动态页面需要完整config）
         self.config = config
         
         # 默认文章选择器（可通过配置覆盖）
@@ -166,6 +166,8 @@ class DynamicPageParser(BBSParser):
         """
         从URL中提取文章ID
         
+        使用基类的 _extract_id 方法
+        
         Args:
             url: 文章URL
         
@@ -177,9 +179,6 @@ class DynamicPageParser(BBSParser):
             '/article/15537' -> '15537'
             '/news?id=15537' -> '15537'
         """
-        import re
-        
-        # 尝试多种模式
         patterns = [
             r'/(\d+)/?$',           # 末尾的数字: /15537
             r'/(\d+)[?&#]',         # 数字后跟参数: /15537?xx
@@ -188,15 +187,7 @@ class DynamicPageParser(BBSParser):
             r'/article/(\d+)',      # 路径中: /article/15537
             r'/news/(\d+)',         # 路径中: /news/15537
         ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(1)
-        
-        # 如果都不匹配，使用URL的MD5
-        import hashlib
-        return hashlib.md5(url.encode()).hexdigest()[:16]
+        return self._extract_id(url, patterns)
     
     def has_load_more_button(self, html: str) -> bool:
         """
@@ -348,8 +339,8 @@ class DynamicPageParser(BBSParser):
             if not images:
                 img_tags = content_elem.find_all('img')
                 for img in img_tags:
-                    # 优先从 srcset 获取最大尺寸的图片
-                    original_src = self._get_original_image_url(img)
+                    # 使用重写的 _get_image_url 方法获取原图
+                    original_src = self._get_image_url(img)
                     if original_src:
                         # 转换为完整URL
                         if not original_src.startswith('http'):
@@ -369,11 +360,11 @@ class DynamicPageParser(BBSParser):
             'images': images
         }
     
-    def _get_original_image_url(self, img_tag) -> Optional[str]:
+    def _get_image_url(self, img_tag) -> Optional[str]:
         """
-        从 img 标签获取原图 URL
+        重写基类方法：从 img 标签获取原图 URL
         
-        优先级：
+        动态页面特有的图片提取逻辑，优先获取原图：
         1. srcset 中最大尺寸的图片
         2. data-src（懒加载原图）
         3. src（可能是缩略图）并尝试去除尺寸后缀
@@ -384,8 +375,6 @@ class DynamicPageParser(BBSParser):
         Returns:
             原图 URL，如果无法获取则返回 None
         """
-        import re
-        
         # 方法1: 从 srcset 获取最大尺寸的图片
         srcset = img_tag.get('srcset', '')
         if srcset:
