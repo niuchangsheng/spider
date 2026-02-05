@@ -20,8 +20,8 @@
 │                                                                 │
 │  Parser 层:                                                     │
 │  ┌──────────────┐                                               │
-│  │  BBSParser   │ ◄─── DynamicPageParser (继承) ✅              │
-│  └──────────────┘                                               │
+│  │  BBSParser   │ ◄─── DynamicPageParser (继承)                 │
+│  └──────────────┘      ❌ 语义不对！Dynamic不是一种BBS          │
 │                                                                 │
 │  Crawler 层:                                                    │
 │  ┌──────────────┐                                               │
@@ -36,17 +36,24 @@
 │  Factory 层:                                                    │
 │  ┌────────────────┐                                             │
 │  │ SpiderFactory  │ ─── 只管理 BBSSpider 及其子类               │
-│  └────────────────┘     ❌ 不管理 DynamicNewsCrawler            │
+│  │  _registry:    │     ❌ 不管理 DynamicNewsCrawler            │
+│  │  - discuz      │ → DiscuzSpider                              │
+│  │  - phpbb       │ → PhpBBSpider                               │
+│  │  - vbulletin   │ → VBulletinSpider                           │
+│  │  - generic     │ → BBSSpider  ❌ 与子类并列，层级混乱        │
+│  └────────────────┘                                             │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 | 问题 | 描述 | 影响 |
 |------|------|------|
-| **继承关系不一致** | `DynamicPageParser` 继承 `BBSParser`，但 `DynamicNewsCrawler` 不继承 `BBSSpider` | 代码结构混乱 |
+| **Parser继承语义错误** | `DynamicPageParser` 继承 `BBSParser`，但动态页面不是BBS | 概念混淆 |
+| **缺少Parser基类** | `BBSParser` 和 `DynamicPageParser` 应该共享基类 | 代码重复 |
+| **Crawler继承不一致** | `DynamicNewsCrawler` 不继承 `BBSSpider` | 代码结构混乱 |
 | **工厂模式不完整** | `SpiderFactory` 只管理 BBS 爬虫 | 无法统一创建爬虫 |
 | **代码重复** | `DynamicNewsCrawler` 有独立的 `fetch_page`、`stats`、`session` | 维护成本高 |
-| **概念混淆** | BBS 和 Dynamic 是并列还是继承？ | 难以扩展 |
+| **Factory层级混乱** | `generic→BBSSpider` 与 `discuz→DiscuzSpider` 并列，但实际是父子关系 | 难以理解 |
 
 ### 1.2 重复代码分析
 
@@ -80,10 +87,21 @@
 │                        推荐类关系图                              │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  Parser 层 (保持不变):                                          │
+│  Parser 层 (重构):                                              │
 │  ┌──────────────────┐                                           │
-│  │    BBSParser     │  ◄─── DynamicPageParser (继承)            │
-│  └──────────────────┘                                           │
+│  │   BaseParser     │  ◄── 新增！抽取公共解析功能               │
+│  │  - config        │      (HTML解析、URL处理、图片提取)        │
+│  │  - parse_images()│                                           │
+│  │  - extract_id()  │                                           │
+│  └────────┬─────────┘                                           │
+│           │                                                     │
+│    ┌──────┴──────────────────┐                                  │
+│    ▼                         ▼                                  │
+│  ┌──────────────┐    ┌────────────────────┐                     │
+│  │  BBSParser   │    │ DynamicPageParser  │                     │
+│  │  (论坛解析)   │    │ (动态页面解析)      │                     │
+│  │  - thread_*  │    │ - article_*        │                     │
+│  └──────────────┘    └────────────────────┘                     │
 │                                                                 │
 │  Crawler 层 (重构):                                             │
 │  ┌──────────────────┐                                           │
@@ -106,27 +124,228 @@
 │  │  - crawl_*   │    │ - crawl_*          │                     │
 │  └──────┬───────┘    └────────────────────┘                     │
 │         │                                                       │
-│  ┌──────┴──────────────┐                                        │
-│  ▼          ▼          ▼                                        │
-│ Discuz   PhpBB    VBulletin                                     │
+│  ┌──────┼──────────────┐                                        │
+│  ▼      ▼              ▼                                        │
+│ Discuz PhpBB      VBulletin                                     │
+│ Spider Spider      Spider                                       │
 │                                                                 │
 │  Factory 层 (扩展):                                             │
-│  ┌────────────────┐                                             │
-│  │ SpiderFactory  │ ─── 统一管理所有爬虫类型                    │
-│  │  _registry:    │                                             │
-│  │  - discuz      │ → DiscuzSpider                              │
-│  │  - phpbb       │ → PhpBBSpider                               │
-│  │  - vbulletin   │ → VBulletinSpider                           │
-│  │  - generic     │ → BBSSpider                                 │
-│  │  - dynamic     │ → DynamicNewsCrawler  🆕                    │
-│  └────────────────┘                                             │
+│  ┌────────────────────────────────────────────────────┐         │
+│  │ SpiderFactory  ─── 统一管理所有爬虫类型             │         │
+│  │                                                    │         │
+│  │  _registry (类型 → 类):                            │         │
+│  │  ┌─────────────────────────────────────────────┐  │         │
+│  │  │ BBS类型:                                     │  │         │
+│  │  │   'generic'   → BBSSpider (通用BBS)         │  │         │
+│  │  │   'discuz'    → DiscuzSpider (继承BBSSpider)│  │         │
+│  │  │   'phpbb'     → PhpBBSpider (继承BBSSpider) │  │         │
+│  │  │   'vbulletin' → VBulletinSpider (继承BBS)   │  │         │
+│  │  ├─────────────────────────────────────────────┤  │         │
+│  │  │ 动态页面类型:                                │  │         │
+│  │  │   'dynamic'   → DynamicNewsCrawler  🆕      │  │         │
+│  │  └─────────────────────────────────────────────┘  │         │
+│  └────────────────────────────────────────────────────┘         │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 类设计
+### 3.2 继承关系说明
 
-#### 3.2.1 BaseSpider (新增)
+```
+继承层级图:
+
+BaseParser (抽象基类)
+├── BBSParser (论坛解析器)
+└── DynamicPageParser (动态页面解析器)
+
+BaseSpider (抽象基类)
+├── BBSSpider (通用BBS爬虫)
+│   ├── DiscuzSpider (Discuz专用)
+│   ├── PhpBBSpider (phpBB专用)
+│   └── VBulletinSpider (vBulletin专用)
+└── DynamicNewsCrawler (动态页面爬虫)
+
+注意:
+- BBSSpider 是 DiscuzSpider 等的父类，不是并列关系
+- 'generic' 类型使用 BBSSpider，适用于未知论坛类型
+- 'discuz' 等类型使用专用子类，有特定处理逻辑
+```
+
+### 3.3 类设计
+
+#### 3.3.1 BaseParser (新增)
+
+```python
+class BaseParser(ABC):
+    """
+    解析器基类
+    
+    所有解析器的公共基类，提供：
+    - 基础HTML解析
+    - URL处理
+    - 图片提取
+    - ID提取
+    """
+    
+    def __init__(self, config: Optional[Config] = None):
+        self.config = config
+    
+    def _extract_id(self, url: str, patterns: List[str]) -> str:
+        """
+        从URL中提取ID
+        
+        Args:
+            url: 页面URL
+            patterns: 正则表达式列表
+        
+        Returns:
+            提取的ID，失败返回MD5哈希
+        """
+        import re
+        import hashlib
+        
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        
+        # 回退：使用URL的MD5
+        return hashlib.md5(url.encode()).hexdigest()[:16]
+    
+    def _extract_images(self, soup: BeautifulSoup, selectors: List[str], base_url: str) -> List[str]:
+        """
+        从HTML中提取图片URL
+        
+        Args:
+            soup: BeautifulSoup对象
+            selectors: CSS选择器列表
+            base_url: 基础URL（用于处理相对路径）
+        
+        Returns:
+            图片URL列表
+        """
+        images = []
+        for selector in selectors:
+            for img in soup.select(selector):
+                src = self._get_image_url(img)
+                if src:
+                    if not src.startswith('http'):
+                        src = urljoin(base_url, src)
+                    if src not in images:
+                        images.append(src)
+        return images
+    
+    def _get_image_url(self, img_tag) -> Optional[str]:
+        """
+        从img标签获取最佳图片URL
+        
+        优先级: srcset(最大) > data-src > src
+        """
+        # 子类可重写此方法
+        return img_tag.get('src')
+    
+    @abstractmethod
+    def parse(self, html: str, url: str) -> Dict[str, Any]:
+        """解析页面（子类实现）"""
+        pass
+```
+
+#### 3.3.2 BBSParser (修改)
+
+```python
+class BBSParser(BaseParser):
+    """
+    BBS论坛解析器
+    
+    继承 BaseParser，添加论坛特有功能：
+    - 帖子列表解析
+    - 帖子详情解析
+    - 分页检测
+    """
+    
+    def __init__(self, config: Optional[Config] = None):
+        super().__init__(config)
+        # 使用全局config或传入的config
+        self.bbs_config = (config or global_config).bbs
+    
+    def parse_thread_list(self, html: str, base_url: str) -> List[Dict]:
+        """解析帖子列表"""
+        # 使用基类的 _extract_images 等方法
+        ...
+    
+    def parse_thread_page(self, html: str, thread_url: str) -> Dict:
+        """解析帖子详情页"""
+        ...
+    
+    def _extract_thread_id(self, url: str) -> str:
+        """提取帖子ID"""
+        patterns = [
+            r'tid[=_](\d+)',
+            r'thread[/-](\d+)',
+            r'/(\d+)\.html?$',
+        ]
+        return self._extract_id(url, patterns)
+```
+
+#### 3.3.3 DynamicPageParser (修改)
+
+```python
+class DynamicPageParser(BaseParser):
+    """
+    动态页面解析器
+    
+    继承 BaseParser，添加动态页面特有功能：
+    - 文章列表解析
+    - 文章详情解析
+    - Ajax分页检测
+    - 原图URL提取
+    """
+    
+    def __init__(self, config: Config):
+        super().__init__(config)
+        # 动态页面特有配置
+        self.article_selector = getattr(config.bbs, 'article_selector', '.article')
+    
+    def parse_articles(self, html: str) -> List[Dict]:
+        """解析文章列表"""
+        ...
+    
+    async def parse_article_detail(self, url: str, html: str) -> Dict:
+        """解析文章详情页"""
+        ...
+    
+    def _get_image_url(self, img_tag) -> Optional[str]:
+        """
+        重写：获取原图URL
+        
+        优先级: srcset(最大尺寸) > data-src > src(去除尺寸后缀)
+        """
+        # 方法1: srcset
+        srcset = img_tag.get('srcset', '')
+        if srcset:
+            max_url = self._parse_srcset_max(srcset)
+            if max_url:
+                return max_url
+        
+        # 方法2: data-src
+        if img_tag.get('data-src'):
+            return img_tag['data-src']
+        
+        # 方法3: src (去除尺寸后缀)
+        src = img_tag.get('src', '')
+        return re.sub(r'-\d+x\d+(\.[a-zA-Z]+)$', r'\1', src) if src else None
+    
+    def _extract_article_id(self, url: str) -> str:
+        """提取文章ID"""
+        patterns = [
+            r'/(\d+)/?$',
+            r'id[=_](\d+)',
+            r'article[/-](\d+)',
+        ]
+        return self._extract_id(url, patterns)
+```
+
+#### 3.3.4 BaseSpider (新增)
 
 ```python
 class BaseSpider(ABC):
@@ -209,7 +428,7 @@ class BaseSpider(ABC):
         pass
 ```
 
-#### 3.2.2 BBSSpider (修改)
+#### 3.3.5 BBSSpider (修改)
 
 ```python
 class BBSSpider(BaseSpider):
@@ -256,7 +475,7 @@ class BBSSpider(BaseSpider):
     # ... 其他BBS特有方法
 ```
 
-#### 3.2.3 DynamicNewsCrawler (修改)
+#### 3.3.6 DynamicNewsCrawler (修改)
 
 ```python
 class DynamicNewsCrawler(BaseSpider):
@@ -294,7 +513,7 @@ class DynamicNewsCrawler(BaseSpider):
     # ... 其他动态页面特有方法
 ```
 
-#### 3.2.4 SpiderFactory (扩展)
+#### 3.3.7 SpiderFactory (扩展)
 
 ```python
 class SpiderFactory:
@@ -361,21 +580,26 @@ spider.py crawl-news "https://sxd.xd.com/" --download-images --max-pages 5
 
 | 阶段 | 内容 | 预计时间 | 风险 |
 |------|------|---------|------|
-| **阶段1** | 创建 `BaseSpider` 基类 | 30分钟 | 低 |
-| **阶段2** | 修改 `BBSSpider` 继承 `BaseSpider` | 30分钟 | 中 |
-| **阶段3** | 修改 `DynamicNewsCrawler` 继承 `BaseSpider` | 30分钟 | 中 |
-| **阶段4** | 扩展 `SpiderFactory` | 15分钟 | 低 |
-| **阶段5** | 更新文档和测试 | 30分钟 | 低 |
+| **阶段1** | 创建 `BaseParser` 基类 | 30分钟 | 低 |
+| **阶段2** | 修改 `BBSParser` 继承 `BaseParser` | 30分钟 | 中 |
+| **阶段3** | 修改 `DynamicPageParser` 继承 `BaseParser` | 30分钟 | 中 |
+| **阶段4** | 创建 `BaseSpider` 基类 | 30分钟 | 低 |
+| **阶段5** | 修改 `BBSSpider` 继承 `BaseSpider` | 30分钟 | 中 |
+| **阶段6** | 修改 `DynamicNewsCrawler` 继承 `BaseSpider` | 30分钟 | 中 |
+| **阶段7** | 扩展 `SpiderFactory` | 15分钟 | 低 |
+| **阶段8** | 更新文档和测试 | 30分钟 | 低 |
 
 ### 4.2 文件变更
 
 | 文件 | 变更类型 | 内容 |
 |------|---------|------|
-| `spider.py` | 修改 | 添加 `BaseSpider`，修改 `BBSSpider` |
+| `core/parser.py` | 修改 | 添加 `BaseParser`，修改 `BBSParser` 继承 |
+| `core/dynamic_parser.py` | 修改 | 继承 `BaseParser`，删除重复代码 |
+| `spider.py` | 修改 | 添加 `BaseSpider`，修改 `BBSSpider` 继承 |
 | `core/dynamic_crawler.py` | 修改 | 继承 `BaseSpider`，删除重复代码 |
-| `run_spider.sh` | 修改 | 添加 `crawl-news` 示例 |
-| `ARCHITECTURE.md` | 修改 | 更新架构图 |
-| `README.md` | 修改 | 添加动态页面爬虫文档 |
+| `ARCHITECTURE.md` | 修改 | 更新架构图（已完成 ✅） |
+| `README.md` | 修改 | 添加动态页面爬虫文档（已完成 ✅） |
+| `run_spider.sh` | 修改 | 添加 `crawl-news` 示例（已完成 ✅） |
 
 ### 4.3 向后兼容
 
