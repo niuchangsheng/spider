@@ -2,21 +2,28 @@
 
 一个功能完善的BBS论坛图片爬虫系统，支持自动化爬取、图片去重、智能选择器检测等功能。
 
-**项目状态**: 🟢 正常运行 | **最后更新**: 2026-02-04 | **架构**: v2.1 子命令模式 ⭐
+**项目状态**: 🟢 正常运行 | **最后更新**: 2026-02-06 | **架构**: v2.2 动态页面支持 ⭐
 
 ---
 
-## 🆕 架构升级 (v2.1) 🎉
+## 🆕 架构升级 (v2.2) 🎉
 
-> **重大升级**: CLI接口全面重构，采用子命令模式，更清晰、更易用！
+> **新功能**: 支持动态新闻/公告页面爬取，智能提取原图！
 
-### v2.1 新特性 (2026-02-04)
+### v2.2 新特性 (2026-02-06)
+
+- ✅ **动态页面爬虫** - `spider.py crawl-news` 支持Ajax分页的新闻页面
+- ✅ **原图智能提取** - 自动从srcset/data-src提取最高分辨率图片
+- ✅ **文章详情爬取** - 批量爬取文章详情并下载图片
+- ✅ **去重机制** - 基于文章ID的去重，避免重复爬取
+- ✅ **灵活配置** - 支持限制页数、仅爬取列表等选项
+
+### v2.1 特性 (2026-02-04)
 
 - ✅ **子命令模式** - `spider.py crawl-url/crawl-urls/crawl-board/crawl-boards`
 - ✅ **意图明确** - 命令名称直接表达功能，告别 `--mode 1/2`
 - ✅ **参数清晰** - 互斥组、位置参数、职责分离
 - ✅ **符合直觉** - 类似 git/docker 的CLI设计，学习成本低
-- ✅ **易于扩展** - 可轻松添加新的子命令
 
 ### v2.0 特性 (2026-02-03)
 
@@ -26,21 +33,25 @@
 - ✅ **工厂模式** - `SpiderFactory.create()` 统一创建
 - ✅ **代码精简** - 减少50%代码量，更易维护
 
-### CLI对比 (v2.1 重大变更)
+### CLI对比 (v2.2 新增动态页面)
 
-| 功能 | v1.x 方式 | v2.0 方式 | v2.1 方式 ⭐ |
-|------|----------|----------|-------------|
-| 爬取URL列表 | `crawl_xindong.py` (选项1) | `spider.py --config xindong --mode 1` | `spider.py crawl-urls --config xindong` |
-| 爬取板块 | `crawl_xindong.py` (选项2) | `spider.py --config xindong --mode 2` | `spider.py crawl-boards --config xindong` |
-| 爬取单个URL | N/A | `spider.py --url "..." --mode 1` | `spider.py crawl-url "..." --auto-detect` |
-| 爬取单个板块 | N/A | `spider.py --url "..." --mode 2` | `spider.py crawl-board "..." --config xindong` |
-| 限制页数 | 硬编码 | `--max-pages 5` | `crawl-board/crawl-boards --max-pages 5` |
+| 功能 | v2.0 方式 | v2.1/v2.2 方式 ⭐ |
+|------|----------|-------------|
+| 爬取URL列表 | `spider.py --config xindong --mode 1` | `spider.py crawl-urls --config xindong` |
+| 爬取板块 | `spider.py --config xindong --mode 2` | `spider.py crawl-boards --config xindong` |
+| 爬取单个URL | `spider.py --url "..." --mode 1` | `spider.py crawl-url "..." --auto-detect` |
+| 爬取单个板块 | `spider.py --url "..." --mode 2` | `spider.py crawl-board "..." --config xindong` |
+| **动态新闻页面** 🆕 | N/A | `spider.py crawl-news "..." --download-images` |
+
+**v2.2 新增**:
+- ✅ **crawl-news**: 爬取动态加载的新闻/公告页面
+- ✅ **--download-images**: 下载文章详情中的图片
+- ✅ **原图提取**: 智能从srcset/data-src获取最高分辨率
 
 **v2.1 优势**:
 - ✅ **意图明确**: `crawl-url` vs `crawl-board` 一目了然
 - ✅ **参数清晰**: `--max-pages` 只在相关命令出现
 - ✅ **易于记忆**: 类似 `git commit`, `docker run` 的风格
-- ✅ **无歧义**: 告别 `--mode 1/2` 的困惑
 
 ### API对比
 
@@ -215,15 +226,15 @@ async with SpiderFactory.create(preset="myforum") as spider:
 ```bash
 cd /home/chang/spider
 
-# v2.1 新命令（子命令模式）
+# v2.2 命令（子命令模式）
 ./run_spider.sh crawl-urls --config xindong         # 爬取配置中的URLs
 ./run_spider.sh crawl-boards --config xindong       # 爬取配置中的所有板块
 ./run_spider.sh crawl-url "https://bbs.com/thread/123" --auto-detect  # 爬取单个URL
 ./run_spider.sh crawl-board "https://bbs.com/forum?fid=21" --config xindong --max-pages 5  # 爬取板块
 
-# v2.0 旧命令（仍然支持，但已废弃）
-./run_spider.sh --config xindong --mode 1           # 废弃，请使用 crawl-urls
-./run_spider.sh --config xindong --mode 2           # 废弃，请使用 crawl-boards
+# 🆕 v2.2 新增：动态新闻页面爬取
+./run_spider.sh crawl-news "https://sxd.xd.com/" --download-images  # 爬取动态新闻并下载图片
+./run_spider.sh crawl-news "https://sxd.xd.com/" --max-pages 5      # 限制爬取页数
 ```
 
 自动脚本会：
@@ -267,11 +278,15 @@ pip install requests aiohttp beautifulsoup4 lxml Pillow loguru fake-useragent te
 #### 步骤3：运行爬虫
 
 ```bash
-# v2.1 子命令模式（推荐）✅
+# v2.2 子命令模式（推荐）✅
 python spider.py crawl-urls --config xindong                     # 爬取配置中的URLs
 python spider.py crawl-boards --config xindong                   # 爬取配置中的所有板块
 python spider.py crawl-url "https://bbs.com/thread/123" --auto-detect  # 爬取单个URL
 python spider.py crawl-board "https://bbs.com/forum?fid=21" --config xindong --max-pages 5
+
+# 🆕 v2.2 新增：动态新闻页面
+python spider.py crawl-news "https://sxd.xd.com/" --download-images  # 爬取并下载图片
+python spider.py crawl-news "https://sxd.xd.com/" --max-pages 10     # 限制页数
 
 # 使用论坛类型预设
 python spider.py crawl-url "https://discuz-forum.com/thread/123" --preset discuz
@@ -279,8 +294,7 @@ python spider.py crawl-board "https://phpbb-forum.com/viewforum.php?f=10" --pres
 
 # 查看帮助
 python spider.py --help                    # 主帮助
-python spider.py crawl-url --help          # 子命令帮助
-python spider.py crawl-boards --help       # 子命令帮助
+python spider.py crawl-news --help         # 动态页面帮助
 ```
 
 #### 步骤4：查看结果
@@ -485,6 +499,61 @@ min_size = 30000     # 30KB以上
 
 ---
 
+## 🆕 实战案例：动态新闻页面（v2.2）
+
+### 适用场景
+
+适用于使用Ajax/JavaScript动态加载内容的网站，如：
+- 游戏官网公告页面
+- 新闻列表页面
+- 带有"查看更多"按钮的页面
+
+### 快速使用
+
+```bash
+# 爬取神仙道官网公告（含图片下载）
+python spider.py crawl-news "https://sxd.xd.com/" --download-images
+
+# 限制爬取页数
+python spider.py crawl-news "https://sxd.xd.com/" --download-images --max-pages 5
+
+# 仅爬取文章列表（不下载图片）
+python spider.py crawl-news "https://sxd.xd.com/" --max-pages 10
+```
+
+### 功能特性
+
+- ✅ **Ajax分页** - 自动处理"查看更多"分页
+- ✅ **原图提取** - 智能从srcset/data-src获取最高分辨率
+- ✅ **去重机制** - 基于文章ID去重，避免重复爬取
+- ✅ **批量下载** - 并发下载文章详情和图片
+
+### 图片保存结构
+
+```
+downloads/
+└── sxd.xd.com/                    # 按域名分类
+    ├── 15503_2025121817140066748.png  # [文章ID]_[原始文件名]
+    ├── 15503_202512181713563677.png
+    └── ...
+```
+
+### 测试结果
+
+```
+✅ 测试时间: 2026-02-06
+✅ 测试状态: 成功
+✅ 目标网站: https://sxd.xd.com/
+✅ 爬取文章: 15篇（3页）
+✅ 下载图片: 原图分辨率，无损质量
+
+发现文章: 15篇
+爬取详情: 15篇
+下载图片: 30张（原图分辨率）
+```
+
+---
+
 ## 📁 项目结构
 
 ```
@@ -494,7 +563,7 @@ spider/
 ├── CODE_REVIEW_GUIDELINE.md # 代码审查指南
 ├── DOCUMENTATION_INDEX.md  # 文档索引导航
 ├── README.md              # 本文档
-├── spider.py              # 统一爬虫主程序（v2.0，含自动检测）
+├── spider.py              # 统一爬虫主程序（v2.2，含动态页面支持）
 ├── config.py              # 统一配置管理（含自动检测）
 ├── requirements.txt       # 依赖列表
 ├── run_spider.sh          # 一键启动脚本
@@ -507,6 +576,8 @@ spider/
 │   ├── __init__.py
 │   ├── downloader.py      # 异步图片下载器
 │   ├── parser.py          # HTML页面解析器
+│   ├── dynamic_parser.py  # 动态页面解析器 🆕
+│   ├── dynamic_crawler.py # 动态页面爬虫 🆕
 │   ├── storage.py         # 数据存储（MongoDB/Redis）
 │   ├── deduplicator.py    # 三重图片去重
 │   └── selector_detector.py # 智能选择器检测器
@@ -1174,9 +1245,9 @@ MIT License
 
 ---
 
-**项目版本**: v2.1 (子命令模式)  
-**最后更新**: 2026-02-04  
+**项目版本**: v2.2 (动态页面支持)  
+**最后更新**: 2026-02-06  
 **维护状态**: 🟢 活跃维护
 
-**重要提示**: v2.1 是重大升级，CLI接口已全面重构。  
-详见设计文档: `docs/designs/2026-02-04-interface-review.md`
+**重要提示**: v2.2 新增动态新闻页面爬虫，支持Ajax分页和原图提取。  
+详见设计文档: `docs/designs/2026-02-05-dynamic-news-page-crawler.md`

@@ -1,22 +1,24 @@
 #!/bin/bash
-# BBS论坛爬虫启动脚本（v2.1 - 子命令模式）
+# BBS论坛爬虫启动脚本（v2.2 - 支持动态页面）
 # 自动激活虚拟环境并运行
 #
 # 使用示例:
 #   ./run_spider.sh                                    # 默认: crawl-urls --config xindong
 #   ./run_spider.sh crawl-boards --config xindong     # 爬取所有板块
 #   ./run_spider.sh crawl-url "https://..." --auto-detect  # 爬取单个URL
+#   ./run_spider.sh crawl-news "https://sxd.xd.com/" --download-images  # 爬取动态新闻页面
 #   CONFIG=xindong SUBCOMMAND=crawl-boards ./run_spider.sh # 使用环境变量
 #
 # 环境变量:
 #   CONFIG      - 配置文件名 (默认: xindong)
 #   SUBCOMMAND  - 子命令 (默认: crawl-urls)
 #
-# v2.1 子命令:
-#   crawl-url       - 爬取单个URL
+# v2.2 子命令:
+#   crawl-url       - 爬取单个URL (BBS帖子)
 #   crawl-urls      - 爬取配置中的URL列表
 #   crawl-board     - 爬取单个板块
 #   crawl-boards    - 爬取配置中的所有板块
+#   crawl-news      - 爬取动态新闻/公告页面 🆕
 
 set -e
 
@@ -24,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "=========================================="
-echo "🕷️  BBS论坛爬虫启动脚本 (v2.1)"
+echo "🕷️  BBS论坛爬虫启动脚本 (v2.2)"
 echo "=========================================="
 echo ""
 
@@ -87,6 +89,7 @@ else
     echo "💡 提示:"
     echo "   • 使用环境变量: CONFIG=xindong SUBCOMMAND=crawl-boards ./run_spider.sh"
     echo "   • 直接传参: ./run_spider.sh crawl-boards --config xindong --max-pages 5"
+    echo "   • 动态页面: ./run_spider.sh crawl-news \"https://sxd.xd.com/\" --download-images"
     echo "   • 查看帮助: ./run_spider.sh --help"
     echo ""
     python spider.py "$SUBCOMMAND" --config "$CONFIG"
