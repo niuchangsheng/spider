@@ -96,7 +96,13 @@ class DynamicNewsCrawler:
         try:
             logger.debug(f"📄 获取页面: {url}")
             
-            async with self.session.get(url) as response:
+            # 添加 Ajax 必要的 Header
+            headers = {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+            }
+            
+            async with self.session.get(url, headers=headers) as response:
                 if response.status == 200:
                     html = await response.text()
                     await asyncio.sleep(self.config.crawler.download_delay)
@@ -143,6 +149,9 @@ class DynamicNewsCrawler:
         page = 1
         all_articles = []
         
+        # 去重集合，存储已爬取的文章ID
+        seen_article_ids = set()
+        
         while True:
             # 构造分页URL
             if page == 1:
@@ -168,24 +177,35 @@ class DynamicNewsCrawler:
                 logger.info(f"✅ 第{page}页没有文章，停止爬取")
                 break
             
-            logger.info(f"   ✓ 发现 {len(articles)} 篇文章")
-            all_articles.extend(articles)
-            self.stats['articles_found'] += len(articles)
+            # 过滤重复文章
+            new_articles = []
+            for article in articles:
+                if article['article_id'] not in seen_article_ids:
+                    seen_article_ids.add(article['article_id'])
+                    new_articles.append(article)
             
-            # 检查是否还有"查看更多"按钮
-            has_more = self.parser.has_load_more_button(html)
-            if not has_more:
-                logger.info("✅ 没有更多内容，停止爬取")
+            if not new_articles:
+                logger.info(f"✅ 第{page}页没有新文章（全部重复），停止爬取")
                 break
+            
+            logger.info(f"   ✓ 发现 {len(new_articles)} 篇新文章 (本页共 {len(articles)} 篇)")
+            all_articles.extend(new_articles)
+            self.stats['articles_found'] += len(new_articles)
             
             # 检查页数限制
             if max_pages and page >= max_pages:
                 logger.info(f"✅ 达到最大页数限制: {max_pages}")
                 break
             
+            # 检查是否还有"查看更多"按钮 (辅助判断)
+            has_more = self.parser.has_load_more_button(html)
+            if not has_more:
+                logger.info("✅ 没有更多内容标识，停止爬取")
+                break
+            
             page += 1
         
-        logger.success(f"🎉 完成爬取！总共发现 {len(all_articles)} 篇文章")
+        logger.success(f"🎉 完成爬取！总共发现 {len(all_articles)} 篇新文章")
         
         return all_articles
     
