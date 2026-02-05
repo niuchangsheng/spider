@@ -330,21 +330,32 @@ class DynamicPageParser(BBSParser):
         # 提取文本内容
         content = content_elem.get_text(strip=True) if content_elem else ""
         
-        # 提取图片
+        # 提取图片（优先获取原图URL）
         images = []
         if content_elem:
-            img_tags = content_elem.find_all('img')
-            for img in img_tags:
-                src = img.get('src') or img.get('data-src')
-                if src:
-                    # 转换为完整URL
-                    if not src.startswith('http'):
-                        base_url = self.config.bbs.base_url
-                        if src.startswith('/'):
-                            src = f"{base_url}{src}"
-                        else:
-                            src = f"{base_url}/{src}"
-                    images.append(src)
+            # 方法1: 从 <a> 标签获取原图链接（图片通常被包裹在链接中）
+            for a_tag in content_elem.find_all('a'):
+                href = a_tag.get('href', '')
+                # 检查是否是图片链接
+                if href and any(ext in href.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                    # 确保是完整URL
+                    if not href.startswith('http'):
+                        href = urljoin(url, href)
+                    if href not in images:
+                        images.append(href)
+            
+            # 方法2: 从 <img> 标签获取（如果没有从 <a> 获取到）
+            if not images:
+                img_tags = content_elem.find_all('img')
+                for img in img_tags:
+                    # 优先从 srcset 获取最大尺寸的图片
+                    original_src = self._get_original_image_url(img)
+                    if original_src:
+                        # 转换为完整URL
+                        if not original_src.startswith('http'):
+                            original_src = urljoin(url, original_src)
+                        if original_src not in images:
+                            images.append(original_src)
         
         logger.debug(f"✓ 提取到 {len(images)} 张图片")
         
@@ -357,3 +368,57 @@ class DynamicPageParser(BBSParser):
             'content': content,
             'images': images
         }
+    
+    def _get_original_image_url(self, img_tag) -> Optional[str]:
+        """
+        从 img 标签获取原图 URL
+        
+        优先级：
+        1. srcset 中最大尺寸的图片
+        2. data-src（懒加载原图）
+        3. src（可能是缩略图）并尝试去除尺寸后缀
+        
+        Args:
+            img_tag: BeautifulSoup img 标签
+        
+        Returns:
+            原图 URL，如果无法获取则返回 None
+        """
+        import re
+        
+        # 方法1: 从 srcset 获取最大尺寸的图片
+        srcset = img_tag.get('srcset', '')
+        if srcset:
+            # srcset 格式: "url1 300w, url2 768w, url3 1024w"
+            # 解析并找到最大尺寸
+            max_width = 0
+            max_url = None
+            for item in srcset.split(','):
+                item = item.strip()
+                if ' ' in item:
+                    parts = item.rsplit(' ', 1)
+                    url_part = parts[0].strip()
+                    size_part = parts[1].strip()
+                    # 提取宽度数值
+                    width_match = re.search(r'(\d+)w', size_part)
+                    if width_match:
+                        width = int(width_match.group(1))
+                        if width > max_width:
+                            max_width = width
+                            max_url = url_part
+            if max_url:
+                return max_url
+        
+        # 方法2: 从 data-src 获取（懒加载）
+        data_src = img_tag.get('data-src')
+        if data_src:
+            return data_src
+        
+        # 方法3: 从 src 获取，并尝试去除尺寸后缀获取原图
+        src = img_tag.get('src', '')
+        if src:
+            # 尝试去除尺寸后缀（如 -1024x481）获取原图URL
+            original_url = re.sub(r'-\d+x\d+(\.[a-zA-Z]+)$', r'\1', src)
+            return original_url
+        
+        return None
