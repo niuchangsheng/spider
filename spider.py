@@ -6,7 +6,10 @@ import asyncio
 import argparse
 import sys
 import aiohttp
+import re
+import os
 from typing import List, Dict, Any, Optional, Type
+from urllib.parse import urlparse
 from loguru import logger
 from pathlib import Path
 from tqdm import tqdm
@@ -17,6 +20,50 @@ from core.downloader import ImageDownloader
 from core.parser import BBSParser
 from core.storage import storage
 from core.deduplicator import ImageDeduplicator
+
+
+def _extract_image_filename(url: str) -> str:
+    """
+    从图片URL提取原始文件名
+    
+    处理逻辑：
+    1. 从URL路径提取文件名
+    2. 去掉尺寸后缀（如 -1024x481）
+    3. 保留原始扩展名
+    
+    Args:
+        url: 图片URL
+    
+    Returns:
+        清理后的文件名
+    
+    Example:
+        >>> _extract_image_filename("https://res.xdcdn.net/game/sxd/files/2025/12/202512181713563677-1024x481.png")
+        '202512181713563677.png'
+    """
+    try:
+        parsed = urlparse(url)
+        filename = os.path.basename(parsed.path)
+        
+        # 去掉尺寸后缀（如 -1024x481, -300x200 等）
+        clean_name = re.sub(r'-\d+x\d+', '', filename)
+        
+        # 去掉查询参数可能带来的后缀
+        clean_name = clean_name.split('?')[0]
+        
+        # 如果文件名为空或无效，生成一个默认名
+        if not clean_name or clean_name == '.' or '.' not in clean_name:
+            # 使用URL的hash作为文件名
+            import hashlib
+            hash_name = hashlib.md5(url.encode()).hexdigest()[:12]
+            clean_name = f"{hash_name}.jpg"
+        
+        return clean_name
+    except Exception:
+        # 出错时返回基于hash的文件名
+        import hashlib
+        hash_name = hashlib.md5(url.encode()).hexdigest()[:12]
+        return f"{hash_name}.jpg"
 
 
 class BBSSpider:
@@ -723,6 +770,12 @@ async def handle_crawl_news(args):
             total_images = 0
             downloaded_images = 0
             
+            # 从URL提取域名作为存储目录
+            from urllib.parse import urlparse
+            domain = urlparse(args.url).netloc  # 如 sxd.xd.com
+            save_dir = config.image.download_dir / domain
+            save_dir.mkdir(parents=True, exist_ok=True)
+            
             async with ImageDownloader() as downloader:
                 for article in full_articles:
                     images = article.get('images', [])
@@ -730,27 +783,30 @@ async def handle_crawl_news(args):
                         continue
                     
                     total_images += len(images)
-                    
-                    # 创建保存目录
                     article_id = article.get('article_id', 'unknown')
-                    save_dir = config.image.download_dir / config.bbs.name / article_id
-                    save_dir.mkdir(parents=True, exist_ok=True)
                     
-                    # 下载图片
-                    metadata = {
-                        'article_id': article_id,
-                        'title': article.get('title', ''),
-                        'url': article.get('url', '')
-                    }
-                    
-                    results = await downloader.download_batch(
-                        images,
-                        save_dir,
-                        metadata
-                    )
-                    
-                    # 统计成功数
-                    downloaded_images += sum(1 for r in results if r.get('success'))
+                    # 逐个下载图片，使用自定义文件名格式
+                    for img_url in images:
+                        # 从图片URL提取原始文件名
+                        img_filename = _extract_image_filename(img_url)
+                        # 生成最终文件名: [article_id]_[原始图片名]
+                        final_filename = f"{article_id}_{img_filename}"
+                        save_path = save_dir / final_filename
+                        
+                        # 下载图片
+                        metadata = {
+                            'article_id': article_id,
+                            'title': article.get('title', ''),
+                            'article_url': article.get('url', ''),
+                            'image_url': img_url
+                        }
+                        
+                        result = await downloader.download_image(img_url, save_path, metadata)
+                        if result.get('success'):
+                            downloaded_images += 1
+                        
+                        # 添加延迟
+                        await asyncio.sleep(config.crawler.download_delay)
             
             logger.success(f"✅ 图片下载完成: {downloaded_images}/{total_images}")
         
