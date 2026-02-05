@@ -285,27 +285,47 @@ class DynamicPageParser(BBSParser):
         """
         soup = BeautifulSoup(html, 'html.parser')
         
-        # 查找文章内容容器（多种可能的选择器）
+        # 查找文章内容容器（按优先级排序，越精确的选择器越靠前）
         content_selectors = [
-            '.article-content',
-            '.content',
-            '.post-content',
-            'article',
-            '.detail-content',
-            '#content',
+            '.article .body',           # 神仙道官网 - 文章正文（最精确）
+            '#single .article .body',   # 神仙道官网 - 带ID的更精确选择器
+            '.article-body',            # 常见变体
+            '.article-content',         # 常见变体
+            '.post-body',               # 博客类
+            '.post-content',            # 博客类
+            '.news-detail',             # 新闻类
+            '.news-content',            # 新闻类
+            '.detail-content',          # 详情页
+            'article .content',         # HTML5 article标签
+            '#content',                 # 通用ID
+            '.content',                 # 通用类（可能太宽泛）
+            # 以下是备选，可能包含过多内容
+            # '.widget_body',           # 可能包含整个页面
+            # '.block-body',            # 可能包含整个页面
         ]
         
         content_elem = None
         for selector in content_selectors:
             content_elem = soup.select_one(selector)
             if content_elem:
-                logger.debug(f"✓ 找到内容容器: {selector}")
+                logger.info(f"✓ 找到内容容器: {selector}")
+                # 打印容器的前100个字符，用于调试
+                text = content_elem.get_text(strip=True)[:100]
+                logger.info(f"   容器内容预览: {text}...")
+                
+                # 调试图片数量
+                imgs = content_elem.find_all('img')
+                logger.info(f"   容器内图片数: {len(imgs)}")
                 break
         
         if not content_elem:
             # 如果没有找到特定容器，使用整个body
             content_elem = soup.find('body')
-            logger.debug("使用整个body作为内容")
+            logger.info("⚠️  未找到特定容器，使用整个body作为内容")
+            
+            if content_elem:
+                imgs = content_elem.find_all('img')
+                logger.info(f"   Body内图片数: {len(imgs)}")
         
         # 提取文本内容
         content = content_elem.get_text(strip=True) if content_elem else ""

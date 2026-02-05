@@ -83,26 +83,31 @@ class DynamicNewsCrawler:
             await self.session.close()
             logger.debug("✓ HTTP会话已关闭")
     
-    async def fetch_page(self, url: str) -> Optional[str]:
+    async def fetch_page(self, url: str, headers: Optional[Dict] = None, is_ajax: bool = False) -> Optional[str]:
         """
         获取页面内容
         
         Args:
             url: 页面URL
+            headers: 可选的HTTP头
+            is_ajax: 是否为Ajax请求（会添加X-Requested-With头）
         
         Returns:
             HTML内容，失败返回None
         """
         try:
-            logger.debug(f"📄 获取页面: {url}")
+            logger.debug(f"📄 获取页面: {url} (Ajax: {is_ajax})")
             
-            # 添加 Ajax 必要的 Header
-            headers = {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-            }
+            # 合并自定义 headers
+            request_headers = {}
+            if headers:
+                request_headers.update(headers)
             
-            async with self.session.get(url, headers=headers) as response:
+            # Ajax请求需要特殊头
+            if is_ajax:
+                request_headers["X-Requested-With"] = "XMLHttpRequest"
+            
+            async with self.session.get(url, headers=request_headers) as response:
                 if response.status == 200:
                     html = await response.text()
                     await asyncio.sleep(self.config.crawler.download_delay)
@@ -163,8 +168,8 @@ class DynamicNewsCrawler:
             
             logger.info(f"\n📄 爬取第 {page} 页: {page_url}")
             
-            # 获取页面内容
-            html = await self.fetch_page(page_url)
+            # 获取页面内容（分页请求需要Ajax头）
+            html = await self.fetch_page(page_url, is_ajax=(page > 1))
             
             if not html:
                 logger.warning(f"⚠️  第{page}页获取失败，停止爬取")
@@ -382,6 +387,12 @@ class DynamicNewsCrawler:
                 logger.error(f"❌ 无法获取文章详情: {url}")
                 self.stats['articles_failed'] += 1
                 return None
+            
+            # 调试：保存HTML
+            if '15539' in url:
+                with open('/tmp/debug_detail.html', 'w', encoding='utf-8') as f:
+                    f.write(html)
+                logger.info(f"🐛 已保存调试HTML到 /tmp/debug_detail.html")
             
             # 解析文章详情
             detail = self.parser.parse_article_detail(html, url)
