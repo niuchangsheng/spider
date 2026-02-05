@@ -246,46 +246,79 @@ class DynamicNewsCrawler:
             logger.info("✓ 浏览器已启动")
             
             clicks = 0
+            # 记录上一次的文章数量，用于判断是否加载成功
+            last_article_count = 0
             
             while True:
-                # 等待页面加载
-                await asyncio.sleep(2)
+                # 1. 检查当前文章数量
+                html = driver.page_source
+                current_articles = self.parser.parse_articles(html)
+                current_count = len(current_articles)
+                logger.debug(f"当前文章数: {current_count}")
                 
-                # 查找"查看更多"按钮
+                # 如果这是第一次，初始化last_article_count
+                if clicks == 0:
+                    last_article_count = current_count
+                
+                # 2. 检查点击限制
+                if max_clicks and clicks >= max_clicks:
+                    logger.info(f"✅ 达到最大点击次数: {max_clicks}")
+                    break
+                
+                # 3. 尝试点击"查看更多"
                 try:
+                    # 等待按钮出现（放宽条件，使用通用选择器）
                     load_more = WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((
                             By.CSS_SELECTOR, 
-                            'a.more[data-action="switch_page"], .load-more, button.load-more'
+                            'a.more, .load-more, .btn-more'
                         ))
                     )
                     
-                    # 检查点击次数
-                    if max_clicks and clicks >= max_clicks:
-                        logger.info(f"✅ 达到最大点击次数: {max_clicks}")
+                    # 检查按钮是否可见
+                    if not load_more.is_displayed():
+                        logger.info("⚠️  '查看更多'按钮不可见，可能已加载完毕")
                         break
                     
-                    # 滚动到按钮位置
-                    driver.execute_script("arguments[0].scrollIntoView();", load_more)
-                    await asyncio.sleep(1)
+                    # 滚动到按钮位置（居中显示）
+                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", load_more)
+                    await asyncio.sleep(1)  # 等待滚动完成
                     
-                    # 点击加载更多
+                    # 强力点击（JavaScript点击比原生click更可靠）
                     driver.execute_script("arguments[0].click();", load_more)
                     clicks += 1
-                    
                     logger.info(f"🔄 点击'查看更多' 第{clicks}次")
                     
-                    # 等待新内容加载
-                    await asyncio.sleep(3)
+                    # 4. 智能等待内容加载
+                    # 轮询检查文章数量是否增加
+                    wait_time = 0
+                    loaded = False
+                    while wait_time < 10:  # 最多等待10秒
+                        await asyncio.sleep(1)
+                        wait_time += 1
+                        
+                        new_html = driver.page_source
+                        new_articles = self.parser.parse_articles(new_html)
+                        new_count = len(new_articles)
+                        
+                        if new_count > last_article_count:
+                            logger.info(f"   ✓ 加载成功！新增 {new_count - last_article_count} 篇文章")
+                            last_article_count = new_count
+                            loaded = True
+                            break
                     
+                    if not loaded:
+                        logger.warning(f"⚠️  等待10秒后文章数量未增加，可能已到底或加载失败")
+                        # 尝试再等一会儿，或者重试一次
+                        
                 except TimeoutException:
                     logger.info("✅ 没有找到'查看更多'按钮，停止加载")
                     break
-                except NoSuchElementException:
-                    logger.info("✅ '查看更多'按钮已消失，停止加载")
+                except Exception as e:
+                    logger.error(f"❌ 点击过程出错: {e}")
                     break
             
-            # 获取完整页面HTML
+            # 获取最终页面HTML
             html = driver.page_source
             
             # 解析所有文章
