@@ -50,19 +50,20 @@ spider/
 │
 ├── core/                  # 核心层 - 基础组件
 │   ├── __init__.py
-│   ├── base.py            # 🆕 BaseSpider + BaseParser（基类集中）
 │   ├── downloader.py      # ImageDownloader
 │   ├── deduplicator.py    # ImageDeduplicator
 │   ├── storage.py         # Storage
-│   └── utils.py           # 🆕 工具函数（从spider.py提取）
+│   └── selector_detector.py # SelectorDetector
 │
 ├── parsers/               # 🆕 解析器层
 │   ├── __init__.py
+│   ├── base.py            # 🆕 BaseParser（解析器基类）
 │   ├── bbs_parser.py      # BBSParser
 │   └── dynamic_parser.py  # DynamicPageParser
 │
 ├── spiders/               # 🆕 爬虫层
 │   ├── __init__.py
+│   ├── base.py            # 🆕 BaseSpider（爬虫基类）
 │   ├── bbs_spider.py      # BBSSpider
 │   ├── discuz_spider.py   # DiscuzSpider
 │   ├── phpbb_spider.py    # PhpBBSpider

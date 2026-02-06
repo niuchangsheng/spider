@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 from loguru import logger
 import re
 
-from core.base import BaseParser
+from parsers.base import BaseParser
 
 
 class DynamicPageParser(BaseParser):

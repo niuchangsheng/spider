@@ -12,7 +12,7 @@ from pathlib import Path
 from loguru import logger
 from tqdm import tqdm
 
-from core.base import BaseSpider
+from spiders.base import BaseSpider
 from core.downloader import ImageDownloader
 from core.storage import storage
 from core.deduplicator import ImageDeduplicator

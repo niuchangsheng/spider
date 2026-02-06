@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from loguru import logger
 
-from core.base import BaseParser
+from parsers.base import BaseParser
 from config import config as global_config
 
 
