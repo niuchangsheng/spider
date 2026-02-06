@@ -147,6 +147,16 @@ async def handle_crawl_board(args):
     else:
         print(f"最大页数: 不限制（爬取所有页）")
     
+    # 队列相关参数
+    if hasattr(args, 'max_workers') and args.max_workers:
+        print(f"并发数: {args.max_workers} (命令行指定)")
+    if hasattr(args, 'use_adaptive_queue') and args.use_adaptive_queue:
+        print(f"队列模式: 自适应队列")
+    elif hasattr(args, 'use_async_queue') and args.use_async_queue is False:
+        print(f"队列模式: 串行模式（禁用异步队列）")
+    else:
+        print(f"队列模式: 异步队列（默认）")
+    
     # 1. 加载配置
     if args.auto_detect:
         logger.info(f"🌐 自动检测配置: {args.board_url}")
@@ -161,10 +171,18 @@ async def handle_crawl_board(args):
         logger.error("❌ 请指定配置来源: --auto-detect 或 --preset 或 --config")
         return
     
-    # 2. 创建爬虫
+    # 2. 应用队列相关配置
+    if hasattr(args, 'max_workers') and args.max_workers:
+        config.crawler.max_concurrent_requests = args.max_workers
+    if hasattr(args, 'use_adaptive_queue') and args.use_adaptive_queue is not None:
+        config.crawler.use_adaptive_queue = args.use_adaptive_queue
+    if hasattr(args, 'use_async_queue') and args.use_async_queue is not None:
+        config.crawler.use_async_queue = args.use_async_queue
+    
+    # 3. 创建爬虫
     spider = SpiderFactory.create(config=config)
     
-    # 3. 爬取板块
+    # 4. 爬取板块
     async with spider:
         logger.info(f"🚀 开始爬取板块...")
         await spider.crawl_board(
@@ -189,11 +207,29 @@ async def handle_crawl_boards(args):
     else:
         print(f"每个板块最大页数: 不限制（爬取所有页）")
     
+    # 队列相关参数
+    if hasattr(args, 'max_workers') and args.max_workers:
+        print(f"并发数: {args.max_workers} (命令行指定)")
+    if hasattr(args, 'use_adaptive_queue') and args.use_adaptive_queue:
+        print(f"队列模式: 自适应队列")
+    elif hasattr(args, 'use_async_queue') and args.use_async_queue is False:
+        print(f"队列模式: 串行模式（禁用异步队列）")
+    else:
+        print(f"队列模式: 异步队列（默认）")
+    
     # 1. 加载配置
     logger.info(f"📁 使用配置文件: {args.config}")
     config = get_example_config(args.config)
     
-    # 2. 获取板块列表
+    # 2. 应用队列相关配置
+    if hasattr(args, 'max_workers') and args.max_workers:
+        config.crawler.max_concurrent_requests = args.max_workers
+    if hasattr(args, 'use_adaptive_queue') and args.use_adaptive_queue is not None:
+        config.crawler.use_adaptive_queue = args.use_adaptive_queue
+    if hasattr(args, 'use_async_queue') and args.use_async_queue is not None:
+        config.crawler.use_async_queue = args.use_async_queue
+    
+    # 3. 获取板块列表
     boards_info = get_forum_boards(args.config)
     logger.info(f"📝 从配置文件加载板块: {len(boards_info)} 个")
     
@@ -201,7 +237,7 @@ async def handle_crawl_boards(args):
         logger.error("❌ 配置文件中没有板块！")
         return
     
-    # 3. 创建爬虫并并发爬取
+    # 4. 创建爬虫并并发爬取
     spider = SpiderFactory.create(config=config)
     
     async with spider:
@@ -264,8 +300,23 @@ async def _crawl_single_news_url(crawler, url, args, config):
     if args.download_images:
         logger.info(f"🚀 开始下载文章详情和图片...")
         
-        # 爬取文章详情
-        full_articles = await crawler.crawl_articles_batch(articles)
+        # 获取队列配置
+        use_queue = getattr(config.crawler, 'use_async_queue', True)
+        if hasattr(args, 'use_async_queue') and args.use_async_queue is not None:
+            use_queue = args.use_async_queue
+        
+        max_workers = getattr(args, 'max_workers', None) or config.crawler.max_concurrent_requests
+        use_adaptive = getattr(config.crawler, 'use_adaptive_queue', False)
+        if hasattr(args, 'use_adaptive_queue') and args.use_adaptive_queue is not None:
+            use_adaptive = args.use_adaptive_queue
+        
+        # 爬取文章详情（使用队列）
+        full_articles = await crawler.crawl_articles_batch(
+            articles,
+            use_queue=use_queue,
+            max_workers=max_workers,
+            use_adaptive=use_adaptive
+        )
         
         # 从URL提取域名作为存储目录
         domain = urlparse(url).netloc  # 如 sxd.xd.com
@@ -273,6 +324,8 @@ async def _crawl_single_news_url(crawler, url, args, config):
         save_dir.mkdir(parents=True, exist_ok=True)
         
         async with ImageDownloader() as downloader:
+            # 准备图片下载任务列表
+            image_tasks = []
             for article in full_articles:
                 images = article.get('images', [])
                 if not images:
@@ -281,7 +334,6 @@ async def _crawl_single_news_url(crawler, url, args, config):
                 total_images += len(images)
                 article_id = article.get('article_id', 'unknown')
                 
-                # 逐个下载图片，使用自定义文件名格式
                 for img_url in images:
                     # 从图片URL提取原始文件名
                     img_filename = _extract_image_filename(img_url)
@@ -289,7 +341,6 @@ async def _crawl_single_news_url(crawler, url, args, config):
                     final_filename = f"{article_id}_{img_filename}"
                     save_path = save_dir / final_filename
                     
-                    # 下载图片
                     metadata = {
                         'article_id': article_id,
                         'title': article.get('title', ''),
@@ -297,7 +348,56 @@ async def _crawl_single_news_url(crawler, url, args, config):
                         'image_url': img_url
                     }
                     
-                    result = await downloader.download_image(img_url, save_path, metadata)
+                    image_tasks.append({
+                        'url': img_url,
+                        'save_path': save_path,
+                        'metadata': metadata
+                    })
+            
+            # 使用队列并发下载图片（如果启用）
+            if use_queue and image_tasks:
+                from core.crawl_queue import CrawlQueue, AdaptiveCrawlQueue
+                
+                workers = max_workers or config.crawler.max_concurrent_requests or 5
+                queue_size = config.crawler.queue_size or 1000
+                
+                if use_adaptive:
+                    queue = AdaptiveCrawlQueue(
+                        initial_workers=workers,
+                        max_workers=workers * 2,
+                        min_workers=1,
+                        queue_size=queue_size
+                    )
+                    logger.info(f"🎯 使用自适应队列下载图片: 初始并发={workers}")
+                else:
+                    queue = CrawlQueue(max_workers=workers, queue_size=queue_size)
+                    logger.info(f"🚀 使用异步队列下载图片: 并发数={workers}")
+                
+                # 定义图片下载任务函数
+                downloaded_count = 0
+                results_container = []
+                
+                async def download_image_task_with_result(task_info):
+                    result = await downloader.download_image(
+                        task_info['url'],
+                        task_info['save_path'],
+                        task_info['metadata']
+                    )
+                    if result.get('success'):
+                        results_container.append(1)
+                    return result.get('success', False)
+                
+                await queue.run(image_tasks, download_image_task_with_result)
+                downloaded_images = len(results_container)
+            else:
+                # 串行下载（兼容模式）
+                logger.debug("📝 使用串行模式下载图片")
+                for task_info in image_tasks:
+                    result = await downloader.download_image(
+                        task_info['url'],
+                        task_info['save_path'],
+                        task_info['metadata']
+                    )
                     if result.get('success'):
                         downloaded_images += 1
                     
@@ -317,6 +417,16 @@ async def handle_crawl_news(args):
         print(f"最大页数: {args.max_pages}")
     else:
         print(f"最大页数: 不限制（爬取所有页）")
+    
+    # 队列相关参数
+    if hasattr(args, 'max_workers') and args.max_workers:
+        print(f"并发数: {args.max_workers} (命令行指定)")
+    if hasattr(args, 'use_adaptive_queue') and args.use_adaptive_queue:
+        print(f"队列模式: 自适应队列")
+    elif hasattr(args, 'use_async_queue') and args.use_async_queue is False:
+        print(f"队列模式: 串行模式（禁用异步队列）")
+    else:
+        print(f"队列模式: 异步队列（默认）")
     
     # 确定要爬取的URL列表
     news_urls = []
@@ -354,6 +464,14 @@ async def handle_crawl_news(args):
     else:
         logger.error("❌ 请提供URL或使用--config参数指定配置文件！")
         return
+    
+    # 应用队列相关配置
+    if hasattr(args, 'max_workers') and args.max_workers:
+        config.crawler.max_concurrent_requests = args.max_workers
+    if hasattr(args, 'use_adaptive_queue') and args.use_adaptive_queue is not None:
+        config.crawler.use_adaptive_queue = args.use_adaptive_queue
+    if hasattr(args, 'use_async_queue') and args.use_async_queue is not None:
+        config.crawler.use_async_queue = args.use_async_queue
     
     # 创建爬虫
     crawler = DynamicNewsCrawler(config)

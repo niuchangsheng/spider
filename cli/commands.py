@@ -67,7 +67,7 @@ def create_parser() -> argparse.ArgumentParser:
     # ============================================================================
     # 子命令3: crawl-board - 爬取单个板块
     # ============================================================================
-    parser_board = subparsers.add_parser('crawl-board', help='爬取单个板块（支持断点续传）')
+    parser_board = subparsers.add_parser('crawl-board', help='爬取单个板块（支持断点续传和异步队列）')
     parser_board.add_argument('board_url', type=str, help='板块URL')
     parser_board.add_argument('--max-pages', type=int, default=None,
                              help='最大页数（默认：爬取所有页）')
@@ -77,6 +77,12 @@ def create_parser() -> argparse.ArgumentParser:
                              help='不从检查点恢复（从头开始）')
     parser_board.add_argument('--start-page', type=int, default=None,
                              help='起始页码（覆盖检查点）')
+    parser_board.add_argument('--max-workers', type=int, default=None,
+                             help='最大并发数（覆盖配置）')
+    parser_board.add_argument('--use-adaptive-queue', action='store_true', default=None,
+                             help='使用自适应队列（根据错误率调整并发）')
+    parser_board.add_argument('--no-async-queue', dest='use_async_queue', action='store_false',
+                             help='禁用异步队列（使用串行模式）')
     
     config_group_board = parser_board.add_mutually_exclusive_group()
     config_group_board.add_argument('--auto-detect', action='store_true',
@@ -89,7 +95,7 @@ def create_parser() -> argparse.ArgumentParser:
     # ============================================================================
     # 子命令4: crawl-boards - 爬取配置中的所有板块
     # ============================================================================
-    parser_boards = subparsers.add_parser('crawl-boards', help='爬取配置中的所有板块')
+    parser_boards = subparsers.add_parser('crawl-boards', help='爬取配置中的所有板块（支持异步队列）')
     parser_boards.add_argument('--config', type=str, required=True,
                               help='配置文件名 (必需)')
     parser_boards.add_argument('--max-pages', type=int, default=None,
@@ -100,11 +106,17 @@ def create_parser() -> argparse.ArgumentParser:
                               help='不从检查点恢复（从头开始）')
     parser_boards.add_argument('--start-page', type=int, default=None,
                               help='起始页码（覆盖检查点，适用于所有板块）')
+    parser_boards.add_argument('--max-workers', type=int, default=None,
+                              help='最大并发数（覆盖配置）')
+    parser_boards.add_argument('--use-adaptive-queue', action='store_true', default=None,
+                              help='使用自适应队列（根据错误率调整并发）')
+    parser_boards.add_argument('--no-async-queue', dest='use_async_queue', action='store_false',
+                              help='禁用异步队列（使用串行模式）')
     
     # ============================================================================
     # 子命令5: crawl-news - 爬取动态新闻页面
     # ============================================================================
-    parser_news = subparsers.add_parser('crawl-news', help='爬取动态新闻页面（支持Ajax加载更多和断点续传）')
+    parser_news = subparsers.add_parser('crawl-news', help='爬取动态新闻页面（支持Ajax加载更多、断点续传和异步队列）')
     parser_news.add_argument('url', type=str, nargs='?', default=None,
                             help='新闻页面URL（可选，如果使用--config则从配置文件读取）')
     parser_news.add_argument('--max-pages', type=int, default=None,
@@ -122,6 +134,12 @@ def create_parser() -> argparse.ArgumentParser:
                             help='不从检查点恢复（从头开始）')
     parser_news.add_argument('--start-page', type=int, default=None,
                             help='起始页码（覆盖检查点）')
+    parser_news.add_argument('--max-workers', type=int, default=None,
+                            help='最大并发数（覆盖配置，用于文章详情和图片下载）')
+    parser_news.add_argument('--use-adaptive-queue', action='store_true', default=None,
+                            help='使用自适应队列（根据错误率调整并发）')
+    parser_news.add_argument('--no-async-queue', dest='use_async_queue', action='store_false',
+                            help='禁用异步队列（使用串行模式）')
     
     # ============================================================================
     # 子命令6: checkpoint-status - 查看检查点状态

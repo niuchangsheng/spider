@@ -12,6 +12,7 @@ from fake_useragent import UserAgent
 from config import Config
 from parsers.dynamic_parser import DynamicPageParser
 from core.checkpoint import CheckpointManager
+from core.crawl_queue import CrawlQueue, AdaptiveCrawlQueue
 
 
 class DynamicNewsCrawler:
@@ -537,14 +538,62 @@ class DynamicNewsCrawler:
             self.stats['articles_failed'] += 1
             return None
     
-    async def crawl_articles_batch(self, articles: List[Dict]) -> List[Dict]:
-        """批量爬取文章详情"""
+    async def crawl_articles_batch(
+        self, 
+        articles: List[Dict],
+        use_queue: bool = True,
+        max_workers: Optional[int] = None,
+        use_adaptive: bool = False
+    ) -> List[Dict]:
+        """
+        批量爬取文章详情（支持异步队列）
+        
+        Args:
+            articles: 文章列表
+            use_queue: 是否使用异步队列（默认True）
+            max_workers: 消费者（worker）的数量，即并发爬取文章的线程数
+                        注意：生产者只有一个，消费者有 max_workers 个
+            use_adaptive: 是否使用自适应队列（默认False）
+        
+        Returns:
+            文章详情列表
+        """
         logger.info(f"🚀 开始批量爬取 {len(articles)} 篇文章详情")
         
-        tasks = [self.crawl_article_detail(article) for article in articles]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        full_articles = [r for r in results if r and not isinstance(r, Exception)]
+        if not use_queue:
+            # 使用传统的 asyncio.gather（兼容模式）
+            tasks = [self.crawl_article_detail(article) for article in articles]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            full_articles = [r for r in results if r and not isinstance(r, Exception)]
+        else:
+            # 使用异步队列
+            workers = max_workers or self.config.crawler.max_concurrent_requests or 5
+            queue_size = self.config.crawler.queue_size or 1000
+            
+            if use_adaptive:
+                queue = AdaptiveCrawlQueue(
+                    initial_workers=workers,
+                    max_workers=workers * 2,
+                    min_workers=1,
+                    queue_size=queue_size
+                )
+                logger.info(f"🎯 使用自适应队列爬取文章详情: 初始并发={workers}")
+            else:
+                queue = CrawlQueue(max_workers=workers, queue_size=queue_size)
+                logger.info(f"🚀 使用异步队列爬取文章详情: 并发数={workers}")
+            
+            # 使用共享列表收集结果
+            results_container = []
+            
+            async def crawl_article_task_with_result(article: Dict):
+                result = await self.crawl_article_detail(article)
+                if result:
+                    results_container.append(result)
+                return result
+            
+            # 运行队列
+            await queue.run(articles, crawl_article_task_with_result)
+            full_articles = results_container
         
         logger.success(f"✅ 成功爬取 {len(full_articles)}/{len(articles)} 篇文章详情")
         

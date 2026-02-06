@@ -50,6 +50,11 @@ class CrawlerConfig(BaseModel):
     download_delay: float = Field(default=1.0, description="下载延迟（秒）")
     request_timeout: int = Field(default=30, description="请求超时时间")
     
+    # 异步任务队列
+    use_async_queue: bool = Field(default=True, description="是否使用异步任务队列")
+    use_adaptive_queue: bool = Field(default=False, description="是否使用自适应队列（根据错误率调整并发）")
+    queue_size: int = Field(default=1000, description="队列最大容量")
+    
     # 重试配置
     max_retries: int = Field(default=3, description="最大重试次数")
     retry_delay: float = Field(default=2.0, description="重试延迟（秒）")

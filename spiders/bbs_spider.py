@@ -17,6 +17,7 @@ from core.downloader import ImageDownloader
 from core.storage import storage
 from core.deduplicator import ImageDeduplicator
 from core.checkpoint import CheckpointManager
+from core.crawl_queue import CrawlQueue, AdaptiveCrawlQueue
 from parsers.bbs_parser import BBSParser
 from config import Config, ConfigLoader
 
@@ -239,12 +240,51 @@ class BBSSpider(BaseSpider):
                         break
                     continue
                 
-                # 爬取每个帖子
-                for thread in threads:
-                    thread['board'] = board_name
-                    await self.crawl_thread(thread)
-                    last_thread_id = thread.get('thread_id')
-                    last_thread_url = thread.get('url')
+                # 使用异步任务队列并发爬取帖子（如果启用）
+                if self.config.crawler.use_async_queue:
+                    # 准备任务列表
+                    thread_tasks = []
+                    for thread in threads:
+                        thread['board'] = board_name
+                        thread_tasks.append(thread)
+                    
+                    # 创建队列并运行
+                    max_workers = self.config.crawler.max_concurrent_requests or 5
+                    use_adaptive = self.config.crawler.use_adaptive_queue
+                    queue_size = self.config.crawler.queue_size or 1000
+                    
+                    if use_adaptive:
+                        queue = AdaptiveCrawlQueue(
+                            initial_workers=max_workers,
+                            max_workers=max_workers * 2,
+                            min_workers=1,
+                            queue_size=queue_size
+                        )
+                        logger.info(f"🎯 使用自适应队列: 初始并发={max_workers}")
+                    else:
+                        queue = CrawlQueue(max_workers=max_workers, queue_size=queue_size)
+                        logger.info(f"🚀 使用异步队列: 并发数={max_workers}")
+                    
+                    # 定义工作函数
+                    async def crawl_thread_task(thread_info: Dict[str, Any]):
+                        """队列工作函数"""
+                        await self.crawl_thread(thread_info)
+                        return thread_info
+                    
+                    # 运行队列
+                    queue_stats = await queue.run(thread_tasks, crawl_thread_task)
+                    logger.info(f"📊 队列统计: {queue_stats}")
+                else:
+                    # 串行爬取（兼容模式）
+                    logger.debug("📝 使用串行模式爬取帖子")
+                    for thread in threads:
+                        thread['board'] = board_name
+                        await self.crawl_thread(thread)
+                
+                # 更新最后爬取的帖子信息
+                if threads:
+                    last_thread_id = threads[-1].get('thread_id')
+                    last_thread_url = threads[-1].get('url')
                 
                 # 4. 保存检查点（每页保存一次）
                 checkpoint.save_checkpoint(
