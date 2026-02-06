@@ -16,6 +16,7 @@ from spiders.base import BaseSpider
 from core.downloader import ImageDownloader
 from core.storage import storage
 from core.deduplicator import ImageDeduplicator
+from core.checkpoint import CheckpointManager
 from parsers.bbs_parser import BBSParser
 from config import Config, ConfigLoader
 
@@ -111,45 +112,173 @@ class BBSSpider(BaseSpider):
         """
         return images
     
-    async def crawl_board(self, board_url: str, board_name: str, max_pages: Optional[int] = None):
+    async def crawl_board(
+        self, 
+        board_url: str, 
+        board_name: str, 
+        max_pages: Optional[int] = None,
+        resume: bool = True,
+        start_page: Optional[int] = None
+    ):
         """
-        爬取板块
+        爬取板块（支持断点续传）
         
         Args:
             board_url: 板块URL
             board_name: 板块名称
             max_pages: 最大页数
+            resume: 是否从检查点恢复（默认True）
+            start_page: 起始页码（如果指定，会覆盖检查点）
         """
         logger.info(f"📚 开始爬取板块: {board_name}")
         
+        # 1. 创建检查点管理器
+        checkpoint = CheckpointManager(
+            site=self.config.bbs.base_url,
+            board=board_name
+        )
+        
+        # 2. 确定起始页
+        start_from_checkpoint = False
+        if start_page is not None:
+            # 手动指定起始页（覆盖检查点）
+            start_page_num = start_page
+            logger.info(f"📌 手动指定起始页: {start_page_num}")
+            if checkpoint.exists():
+                logger.info("⚠️  将覆盖现有检查点")
+        elif resume and checkpoint.exists():
+            # 从检查点恢复
+            checkpoint_data = checkpoint.load_checkpoint()
+            if checkpoint_data:
+                status = checkpoint_data.get('status', 'running')
+                if status == 'completed':
+                    logger.info("✅ 该板块已完成爬取，跳过")
+                    return
+                
+                # 检查点保存的是"当前页"（刚爬完的页），恢复时从下一页开始
+                checkpoint_page = checkpoint_data.get('current_page', 1)
+                start_page_num = checkpoint_page
+                last_thread_id = checkpoint_data.get('last_thread_id')
+                logger.info(f"🔄 从检查点恢复: 第 {start_page_num} 页")
+                if last_thread_id:
+                    logger.info(f"   最后爬取的帖子ID: {last_thread_id}")
+                start_from_checkpoint = True
+            else:
+                start_page_num = 1
+        else:
+            # 从头开始
+            start_page_num = 1
+        
+        # 3. 从起始页开始爬取
         current_url = board_url
         page_count = 0
+        last_thread_id = None
+        last_thread_url = None
         
-        while current_url and (max_pages is None or page_count < max_pages):
-            page_count += 1
-            logger.info(f"📄 爬取第 {page_count} 页: {current_url}")
-            
-            # 获取列表页
-            html = await self.fetch_page(current_url)
-            if not html:
-                break
-            
-            # 解析帖子列表
-            threads = self.parser.parse_thread_list(html, current_url)
-            logger.info(f"✅ 发现 {len(threads)} 个帖子")
-            
-            # 爬取每个帖子
-            for thread in threads:
-                thread['board'] = board_name
-                await self.crawl_thread(thread)
-            
-            # 查找下一页
-            current_url = self.parser.find_next_page(html, current_url)
-            if not current_url:
-                logger.info("📌 没有更多页面")
-                break
+        # 如果从检查点恢复且起始页>1，需要跳转到指定页
+        # 注意：不同论坛的分页方式不同，这里采用简单策略：
+        # 从第一页开始，通过"下一页"链接到达指定页（会跳过已爬的帖子）
+        if start_from_checkpoint and start_page_num > 1:
+            logger.info(f"⏩ 从检查点恢复，需要跳转到第 {start_page_num} 页")
+            logger.info(f"   提示：将从第一页开始，通过'下一页'链接到达指定页")
+            logger.info(f"   已爬取的帖子会自动跳过（通过去重机制）")
         
-        logger.success(f"🎉 板块爬取完成: {board_name}, 总页数: {page_count}")
+        try:
+            while current_url and (max_pages is None or page_count < max_pages):
+                page_count += 1
+                
+                # 计算实际页码
+                if start_from_checkpoint and start_page_num > 1:
+                    # 从检查点恢复：前几页跳过，到达指定页后开始爬取
+                    actual_page = page_count
+                    if actual_page < start_page_num:
+                        # 跳过已爬页，只查找下一页
+                        logger.debug(f"⏭️  跳过第 {actual_page} 页（已爬取）")
+                        html = await self.fetch_page(current_url)
+                        if html:
+                            current_url = self.parser.find_next_page(html, current_url)
+                            if not current_url:
+                                logger.warning("⚠️  无法找到下一页，可能已到达最后一页")
+                                break
+                        continue
+                    actual_page = page_count
+                else:
+                    # 正常情况：从指定页或第1页开始
+                    actual_page = start_page_num + page_count - 1 if start_page_num > 1 else page_count
+                
+                logger.info(f"📄 爬取第 {actual_page} 页: {current_url}")
+                
+                # 获取列表页
+                html = await self.fetch_page(current_url)
+                if not html:
+                    checkpoint.mark_error("无法获取页面")
+                    logger.error(f"❌ 无法获取第 {actual_page} 页")
+                    break
+                
+                # 解析帖子列表
+                threads = self.parser.parse_thread_list(html, current_url)
+                logger.info(f"✅ 发现 {len(threads)} 个帖子")
+                
+                if not threads:
+                    logger.warning(f"⚠️  第 {actual_page} 页没有找到帖子")
+                    # 保存检查点后继续下一页
+                    checkpoint.save_checkpoint(
+                        current_page=actual_page + 1,
+                        last_thread_id=last_thread_id,
+                        last_thread_url=last_thread_url,
+                        status="running",
+                        stats={
+                            "crawled_count": self.stats['threads_crawled'],
+                            "failed_count": self.stats['images_failed'],
+                            "images_downloaded": self.stats['images_downloaded']
+                        }
+                    )
+                    # 查找下一页
+                    current_url = self.parser.find_next_page(html, current_url)
+                    if not current_url:
+                        break
+                    continue
+                
+                # 爬取每个帖子
+                for thread in threads:
+                    thread['board'] = board_name
+                    await self.crawl_thread(thread)
+                    last_thread_id = thread.get('thread_id')
+                    last_thread_url = thread.get('url')
+                
+                # 4. 保存检查点（每页保存一次）
+                checkpoint.save_checkpoint(
+                    current_page=actual_page + 1,  # 下一页
+                    last_thread_id=last_thread_id,
+                    last_thread_url=last_thread_url,
+                    status="running",
+                    stats={
+                        "crawled_count": self.stats['threads_crawled'],
+                        "failed_count": self.stats['images_failed'],
+                        "images_downloaded": self.stats['images_downloaded']
+                    }
+                )
+                
+                # 查找下一页
+                current_url = self.parser.find_next_page(html, current_url)
+                if not current_url:
+                    logger.info("📌 没有更多页面")
+                    break
+            
+            # 5. 标记完成
+            checkpoint.mark_completed(final_stats={
+                "total_crawled": self.stats['threads_crawled'],
+                "total_images": self.stats['images_downloaded'],
+                "total_failed": self.stats['images_failed']
+            })
+            
+            logger.success(f"🎉 板块爬取完成: {board_name}, 总页数: {page_count}")
+            
+        except Exception as e:
+            # 发生错误时保存检查点
+            logger.error(f"❌ 爬取过程中发生错误: {e}")
+            checkpoint.mark_error(str(e))
+            raise
     
     async def crawl_thread(self, thread_info: Dict[str, Any]):
         """

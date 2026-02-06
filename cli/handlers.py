@@ -8,7 +8,7 @@ from typing import Dict, Any
 from urllib.parse import urlparse
 from loguru import logger
 
-from config import Config, ConfigLoader, get_example_config, get_forum_boards, get_forum_urls
+from config import Config, ConfigLoader, get_example_config, get_forum_boards, get_forum_urls, get_news_urls
 from spiders import SpiderFactory
 from spiders.dynamic_news_spider import DynamicNewsCrawler
 from core.downloader import ImageDownloader

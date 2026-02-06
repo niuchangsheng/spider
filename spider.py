@@ -14,7 +14,15 @@ import sys
 from pathlib import Path
 from loguru import logger
 
-from cli import create_parser, handle_crawl_url, handle_crawl_urls, handle_crawl_board, handle_crawl_boards, handle_crawl_news
+from cli import (
+    create_parser, 
+    handle_crawl_url, 
+    handle_crawl_urls, 
+    handle_crawl_board, 
+    handle_crawl_boards, 
+    handle_crawl_news,
+    handle_checkpoint_status
+)
 
 
 async def main():
@@ -57,6 +65,8 @@ async def main():
         await handle_crawl_boards(args)
     elif args.command == 'crawl-news':
         await handle_crawl_news(args)
+    elif args.command == 'checkpoint-status':
+        await handle_checkpoint_status(args)
 
 
 if __name__ == "__main__":
