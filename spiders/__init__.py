@@ -13,7 +13,7 @@
 from spiders.base import BaseSpider
 from spiders.bbs_spider import BBSSpider, DiscuzSpider, PhpBBSpider, VBulletinSpider
 from spiders.dynamic_crawler import DynamicNewsCrawler
-from spiders.factory import SpiderFactory
+from spiders.spider_factory import SpiderFactory
 
 __all__ = [
     'BaseSpider',

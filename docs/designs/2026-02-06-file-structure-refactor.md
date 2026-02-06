@@ -69,7 +69,7 @@ spider/
 │   ├── phpbb_spider.py    # PhpBBSpider
 │   ├── vbulletin_spider.py # VBulletinSpider
 │   ├── dynamic_crawler.py # DynamicNewsCrawler
-│   └── factory.py         # SpiderFactory
+│   └── spider_factory.py  # SpiderFactory
 │
 ├── cli/                   # 🆕 CLI层
 │   ├── __init__.py
