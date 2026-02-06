@@ -241,7 +241,9 @@ async def _crawl_single_news_url(crawler, url, args, config):
     if args.method == 'ajax':
         articles = await crawler.crawl_dynamic_page_ajax(
             url,
-            max_pages=args.max_pages
+            max_pages=args.max_pages,
+            resume=args.resume,
+            start_page=args.start_page
         )
     else:  # selenium
         articles = await crawler.crawl_dynamic_page_selenium(
@@ -434,11 +436,21 @@ async def handle_checkpoint_status(args):
     print(f"  创建时间: {data.get('created_at', 'N/A')}")
     print(f"  更新时间: {data.get('last_update_time', 'N/A')}")
     
+    # 显示 article_id 相关信息（用于动态新闻）
+    seen_article_ids = data.get('seen_article_ids', [])
+    if seen_article_ids:
+        print(f"\n📋 文章ID信息:")
+        print(f"  已爬取文章数: {len(seen_article_ids)}")
+        if data.get('min_article_id'):
+            print(f"  最小文章ID: {data.get('min_article_id')}")
+        if data.get('max_article_id'):
+            print(f"  最大文章ID: {data.get('max_article_id')}")
+    
     # 显示统计信息
     stats = data.get('stats', {})
     if stats:
         print("\n📊 统计信息:")
-        print(f"  已爬取帖子: {stats.get('crawled_count', 0)}")
+        print(f"  已爬取帖子: {stats.get('crawled_count', stats.get('articles_found', 0))}")
         print(f"  下载图片: {stats.get('images_downloaded', 0)}")
         print(f"  失败数: {stats.get('failed_count', 0)}")
         if 'last_error' in stats:

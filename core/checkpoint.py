@@ -53,7 +53,10 @@ class CheckpointManager:
         last_thread_id: Optional[str] = None,
         last_thread_url: Optional[str] = None,
         status: str = "running",
-        stats: Optional[Dict[str, Any]] = None
+        stats: Optional[Dict[str, Any]] = None,
+        seen_article_ids: Optional[List[str]] = None,
+        min_article_id: Optional[str] = None,
+        max_article_id: Optional[str] = None
     ) -> bool:
         """
         保存检查点
@@ -64,6 +67,9 @@ class CheckpointManager:
             last_thread_url: 最后爬取的帖子URL
             status: 状态 (running/paused/completed/error)
             stats: 统计信息字典
+            seen_article_ids: 已爬取的文章ID列表（用于动态新闻去重）
+            min_article_id: 已爬取的最小文章ID（用于倒序排列）
+            max_article_id: 已爬取的最大文章ID（用于正序排列）
         
         Returns:
             是否保存成功
@@ -79,6 +85,14 @@ class CheckpointManager:
                 "last_update_time": datetime.now().isoformat(),
                 "stats": stats or {}
             }
+            
+            # 添加 article_id 相关字段（用于动态新闻）
+            if seen_article_ids is not None:
+                checkpoint["seen_article_ids"] = seen_article_ids
+            if min_article_id is not None:
+                checkpoint["min_article_id"] = min_article_id
+            if max_article_id is not None:
+                checkpoint["max_article_id"] = max_article_id
             
             # 如果存在旧检查点，保留创建时间
             old_checkpoint = self.load_checkpoint()
@@ -158,7 +172,10 @@ class CheckpointManager:
             last_thread_id=checkpoint.get('last_thread_id'),
             last_thread_url=checkpoint.get('last_thread_url'),
             status="completed",
-            stats=final_stats or checkpoint.get('stats', {})
+            stats=final_stats or checkpoint.get('stats', {}),
+            seen_article_ids=checkpoint.get('seen_article_ids'),
+            min_article_id=checkpoint.get('min_article_id'),
+            max_article_id=checkpoint.get('max_article_id')
         )
     
     def mark_error(self, error_message: str) -> bool:
@@ -184,7 +201,10 @@ class CheckpointManager:
             last_thread_id=checkpoint.get('last_thread_id'),
             last_thread_url=checkpoint.get('last_thread_url'),
             status="error",
-            stats=stats
+            stats=stats,
+            seen_article_ids=checkpoint.get('seen_article_ids'),
+            min_article_id=checkpoint.get('min_article_id'),
+            max_article_id=checkpoint.get('max_article_id')
         )
     
     def clear_checkpoint(self) -> bool:
@@ -220,6 +240,33 @@ class CheckpointManager:
         if checkpoint:
             return checkpoint.get('stats', {})
         return {}
+    
+    def get_seen_article_ids(self) -> set:
+        """
+        获取已爬取的文章ID集合（用于动态新闻去重）
+        
+        Returns:
+            文章ID集合
+        """
+        checkpoint = self.load_checkpoint()
+        if checkpoint:
+            seen_ids = checkpoint.get('seen_article_ids', [])
+            return set(seen_ids)
+        return set()
+    
+    def get_min_article_id(self) -> Optional[str]:
+        """获取已爬取的最小文章ID（用于倒序排列）"""
+        checkpoint = self.load_checkpoint()
+        if checkpoint:
+            return checkpoint.get('min_article_id')
+        return None
+    
+    def get_max_article_id(self) -> Optional[str]:
+        """获取已爬取的最大文章ID（用于正序排列）"""
+        checkpoint = self.load_checkpoint()
+        if checkpoint:
+            return checkpoint.get('max_article_id')
+        return None
 
 
 def get_checkpoint_manager(site: str, board: str = "all") -> CheckpointManager:

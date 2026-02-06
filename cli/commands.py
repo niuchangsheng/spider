@@ -104,7 +104,7 @@ def create_parser() -> argparse.ArgumentParser:
     # ============================================================================
     # 子命令5: crawl-news - 爬取动态新闻页面
     # ============================================================================
-    parser_news = subparsers.add_parser('crawl-news', help='爬取动态新闻页面（支持Ajax加载更多）')
+    parser_news = subparsers.add_parser('crawl-news', help='爬取动态新闻页面（支持Ajax加载更多和断点续传）')
     parser_news.add_argument('url', type=str, nargs='?', default=None,
                             help='新闻页面URL（可选，如果使用--config则从配置文件读取）')
     parser_news.add_argument('--max-pages', type=int, default=None,
@@ -116,6 +116,12 @@ def create_parser() -> argparse.ArgumentParser:
                             help='是否下载文章中的图片')
     parser_news.add_argument('--config', type=str,
                             help='配置文件名（可选，用于从配置文件读取news_urls并全部爬取）')
+    parser_news.add_argument('--resume', action='store_true', default=True,
+                            help='从检查点恢复（默认：启用）')
+    parser_news.add_argument('--no-resume', dest='resume', action='store_false',
+                            help='不从检查点恢复（从头开始）')
+    parser_news.add_argument('--start-page', type=int, default=None,
+                            help='起始页码（覆盖检查点）')
     
     # ============================================================================
     # 子命令6: checkpoint-status - 查看检查点状态
