@@ -32,8 +32,11 @@ def create_parser() -> argparse.ArgumentParser:
   # 爬取配置中的所有板块
   python spider.py crawl-boards --config xindong
   
-  # 爬取动态新闻页面
+  # 爬取动态新闻页面（单个URL）
   python spider.py crawl-news "https://sxd.xd.com/" --download-images --max-pages 5
+  
+  # 爬取配置文件中的所有新闻URL
+  python spider.py crawl-news --config news --download-images
         '''
     )
     
@@ -64,10 +67,16 @@ def create_parser() -> argparse.ArgumentParser:
     # ============================================================================
     # 子命令3: crawl-board - 爬取单个板块
     # ============================================================================
-    parser_board = subparsers.add_parser('crawl-board', help='爬取单个板块')
+    parser_board = subparsers.add_parser('crawl-board', help='爬取单个板块（支持断点续传）')
     parser_board.add_argument('board_url', type=str, help='板块URL')
     parser_board.add_argument('--max-pages', type=int, default=None,
                              help='最大页数（默认：爬取所有页）')
+    parser_board.add_argument('--resume', action='store_true', default=True,
+                             help='从检查点恢复（默认：启用）')
+    parser_board.add_argument('--no-resume', dest='resume', action='store_false',
+                             help='不从检查点恢复（从头开始）')
+    parser_board.add_argument('--start-page', type=int, default=None,
+                             help='起始页码（覆盖检查点）')
     
     config_group_board = parser_board.add_mutually_exclusive_group()
     config_group_board.add_argument('--auto-detect', action='store_true',
@@ -85,12 +94,19 @@ def create_parser() -> argparse.ArgumentParser:
                               help='配置文件名 (必需)')
     parser_boards.add_argument('--max-pages', type=int, default=None,
                               help='每个板块最大页数（默认：爬取所有页）')
+    parser_boards.add_argument('--resume', action='store_true', default=True,
+                              help='从检查点恢复（默认：启用）')
+    parser_boards.add_argument('--no-resume', dest='resume', action='store_false',
+                              help='不从检查点恢复（从头开始）')
+    parser_boards.add_argument('--start-page', type=int, default=None,
+                              help='起始页码（覆盖检查点，适用于所有板块）')
     
     # ============================================================================
     # 子命令5: crawl-news - 爬取动态新闻页面
     # ============================================================================
     parser_news = subparsers.add_parser('crawl-news', help='爬取动态新闻页面（支持Ajax加载更多）')
-    parser_news.add_argument('url', type=str, help='新闻页面URL')
+    parser_news.add_argument('url', type=str, nargs='?', default=None,
+                            help='新闻页面URL（可选，如果使用--config则从配置文件读取）')
     parser_news.add_argument('--max-pages', type=int, default=None,
                             help='最大页数（默认：爬取所有页）')
     parser_news.add_argument('--method', type=str, default='ajax',
@@ -99,6 +115,18 @@ def create_parser() -> argparse.ArgumentParser:
     parser_news.add_argument('--download-images', action='store_true',
                             help='是否下载文章中的图片')
     parser_news.add_argument('--config', type=str,
-                            help='配置文件名（可选，用于自定义选择器）')
+                            help='配置文件名（可选，用于从配置文件读取news_urls并全部爬取）')
+    
+    # ============================================================================
+    # 子命令6: checkpoint-status - 查看检查点状态
+    # ============================================================================
+    parser_checkpoint = subparsers.add_parser('checkpoint-status', 
+                                             help='查看检查点状态')
+    parser_checkpoint.add_argument('--site', type=str, required=True,
+                                  help='网站域名（如 sxd.xd.com）')
+    parser_checkpoint.add_argument('--board', type=str, default='all',
+                                  help='板块名称（默认：all）')
+    parser_checkpoint.add_argument('--clear', action='store_true',
+                                  help='清除检查点')
     
     return parser

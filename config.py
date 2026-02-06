@@ -357,6 +357,33 @@ def get_forum_urls(config_name: str) -> List[str]:
         logger.error(f"读取URL列表失败: {e}")
         return []
 
+
+def get_news_urls(config_name: str) -> List[str]:
+    """
+    获取新闻URL列表
+    
+    Args:
+        config_name: 配置名称
+    
+    Returns:
+        新闻URL列表
+    
+    Examples:
+        >>> urls = get_news_urls("news")
+        >>> print(urls[0])
+    """
+    config_file = CONFIG_DIR / f"{config_name}.json"
+    if not config_file.exists():
+        logger.warning(f"配置文件不存在: {config_file}")
+        return []
+    
+    try:
+        data = load_forum_config_file(config_file)
+        return data.get("news_urls", [])
+    except Exception as e:
+        logger.error(f"读取新闻URL列表失败: {e}")
+        return []
+
 # 向后兼容：保留旧函数名
 def get_example_threads(config_name: str) -> List[str]:
     """已废弃，请使用 get_forum_urls()"""

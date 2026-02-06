@@ -1,0 +1,22 @@
+{
+  "name": "新闻网站",
+  "forum_type": "news",
+  "base_url": "https://sxd.xd.com",
+  
+  "crawler": {
+    "max_concurrent_requests": 3,
+    "download_delay": 2.0,
+    "request_timeout": 30,
+    "max_retries": 3
+  },
+  
+  "image": {
+    "min_width": 300,
+    "min_height": 300,
+    "min_size": 30000
+  },
+  
+  "news_urls": [
+    "https://sxd.xd.com/"
+  ]
+}
