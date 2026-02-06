@@ -3,25 +3,24 @@
 用于爬取使用Ajax异步加载内容的新闻/公告页面
 """
 import asyncio
-import sys
-from typing import List, Dict, Optional, TYPE_CHECKING
+import aiohttp
+from typing import List, Dict, Optional
 from loguru import logger
 from pathlib import Path
+from fake_useragent import UserAgent
 
 from config import Config
-from core.dynamic_parser import DynamicPageParser
-
-# 避免循环导入
-if TYPE_CHECKING:
-    from spider import BaseSpider
+from parsers.dynamic_parser import DynamicPageParser
 
 
 class DynamicNewsCrawler:
     """
     动态新闻页面爬虫
     
-    继承 BaseSpider 的设计理念，但为了避免循环导入，
-    采用组合方式复用基础功能。
+    与 BBSSpider 并列，继承相同的设计理念：
+    - 异步上下文管理
+    - 统一的统计信息接口
+    - 可配置的请求头
     
     特点：
     - 支持Ajax方式快速爬取
@@ -76,9 +75,6 @@ class DynamicNewsCrawler:
     
     async def init(self):
         """初始化爬虫"""
-        import aiohttp
-        from fake_useragent import UserAgent
-        
         logger.info("⚙️  初始化爬虫组件...")
         
         self.ua = UserAgent()
@@ -171,12 +167,6 @@ class DynamicNewsCrawler:
         
         Returns:
             文章列表
-        
-        Example:
-            articles = await crawler.crawl_dynamic_page_ajax(
-                "https://sxd.xd.com/",
-                max_pages=5
-            )
         """
         logger.info(f"🚀 开始爬取动态页面（Ajax方式）")
         logger.info(f"   URL: {base_url}")
@@ -262,15 +252,6 @@ class DynamicNewsCrawler:
         
         Returns:
             文章列表
-        
-        Note:
-            需要安装selenium: pip install selenium
-        
-        Example:
-            articles = await crawler.crawl_dynamic_page_selenium(
-                "https://sxd.xd.com/",
-                max_clicks=10
-            )
         """
         logger.info(f"🚀 开始爬取动态页面（Selenium方式）")
         logger.info(f"   URL: {url}")
@@ -281,14 +262,14 @@ class DynamicNewsCrawler:
             from selenium.webdriver.common.by import By
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
-            from selenium.common.exceptions import TimeoutException, NoSuchElementException
+            from selenium.common.exceptions import TimeoutException
         except ImportError:
             logger.error("❌ 缺少Selenium依赖，请安装: pip install selenium")
             return []
         
         # 配置Selenium
         options = webdriver.ChromeOptions()
-        options.add_argument('--headless')  # 无头模式
+        options.add_argument('--headless')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
@@ -302,28 +283,22 @@ class DynamicNewsCrawler:
             logger.info("✓ 浏览器已启动")
             
             clicks = 0
-            # 记录上一次的文章数量，用于判断是否加载成功
             last_article_count = 0
             
             while True:
-                # 1. 检查当前文章数量
                 html = driver.page_source
                 current_articles = self.parser.parse_articles(html)
                 current_count = len(current_articles)
                 logger.debug(f"当前文章数: {current_count}")
                 
-                # 如果这是第一次，初始化last_article_count
                 if clicks == 0:
                     last_article_count = current_count
                 
-                # 2. 检查点击限制
                 if max_clicks and clicks >= max_clicks:
                     logger.info(f"✅ 达到最大点击次数: {max_clicks}")
                     break
                 
-                # 3. 尝试点击"查看更多"
                 try:
-                    # 等待按钮出现（放宽条件，使用通用选择器）
                     load_more = WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((
                             By.CSS_SELECTOR, 
@@ -331,25 +306,20 @@ class DynamicNewsCrawler:
                         ))
                     )
                     
-                    # 检查按钮是否可见
                     if not load_more.is_displayed():
                         logger.info("⚠️  '查看更多'按钮不可见，可能已加载完毕")
                         break
                     
-                    # 滚动到按钮位置（居中显示）
                     driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", load_more)
-                    await asyncio.sleep(1)  # 等待滚动完成
+                    await asyncio.sleep(1)
                     
-                    # 强力点击（JavaScript点击比原生click更可靠）
                     driver.execute_script("arguments[0].click();", load_more)
                     clicks += 1
                     logger.info(f"🔄 点击'查看更多' 第{clicks}次")
                     
-                    # 4. 智能等待内容加载
-                    # 轮询检查文章数量是否增加
                     wait_time = 0
                     loaded = False
-                    while wait_time < 10:  # 最多等待10秒
+                    while wait_time < 10:
                         await asyncio.sleep(1)
                         wait_time += 1
                         
@@ -364,8 +334,7 @@ class DynamicNewsCrawler:
                             break
                     
                     if not loaded:
-                        logger.warning(f"⚠️  等待10秒后文章数量未增加，可能已到底或加载失败")
-                        # 尝试再等一会儿，或者重试一次
+                        logger.warning(f"⚠️  等待10秒后文章数量未增加")
                         
                 except TimeoutException:
                     logger.info("✅ 没有找到'查看更多'按钮，停止加载")
@@ -374,10 +343,7 @@ class DynamicNewsCrawler:
                     logger.error(f"❌ 点击过程出错: {e}")
                     break
             
-            # 获取最终页面HTML
             html = driver.page_source
-            
-            # 解析所有文章
             articles = self.parser.parse_articles(html)
             self.stats['articles_found'] = len(articles)
             
@@ -395,15 +361,7 @@ class DynamicNewsCrawler:
                 logger.debug("✓ 浏览器已关闭")
     
     async def crawl_article_detail(self, article: Dict) -> Optional[Dict]:
-        """
-        爬取单篇文章详情
-        
-        Args:
-            article: 文章基本信息字典
-        
-        Returns:
-            文章详细信息（包含完整内容和图片列表）
-        """
+        """爬取单篇文章详情"""
         url = article.get('url')
         if not url:
             logger.warning("⚠️  文章缺少URL，跳过")
@@ -419,16 +377,7 @@ class DynamicNewsCrawler:
                 self.stats['articles_failed'] += 1
                 return None
             
-            # 调试：保存HTML
-            if '15539' in url:
-                with open('/tmp/debug_detail.html', 'w', encoding='utf-8') as f:
-                    f.write(html)
-                logger.info(f"🐛 已保存调试HTML到 /tmp/debug_detail.html")
-            
-            # 解析文章详情
             detail = self.parser.parse_article_detail(html, url)
-            
-            # 合并基本信息和详情
             full_article = {**article, **detail}
             
             self.stats['articles_crawled'] += 1
@@ -442,21 +391,12 @@ class DynamicNewsCrawler:
             return None
     
     async def crawl_articles_batch(self, articles: List[Dict]) -> List[Dict]:
-        """
-        批量爬取文章详情
-        
-        Args:
-            articles: 文章基本信息列表
-        
-        Returns:
-            文章详细信息列表
-        """
+        """批量爬取文章详情"""
         logger.info(f"🚀 开始批量爬取 {len(articles)} 篇文章详情")
         
         tasks = [self.crawl_article_detail(article) for article in articles]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # 过滤掉失败的结果
         full_articles = [r for r in results if r and not isinstance(r, Exception)]
         
         logger.success(f"✅ 成功爬取 {len(full_articles)}/{len(articles)} 篇文章详情")
@@ -464,12 +404,5 @@ class DynamicNewsCrawler:
         return full_articles
     
     def get_statistics(self) -> Dict:
-        """
-        获取统计信息
-        
-        与 BaseSpider.get_statistics() 保持一致的接口
-        
-        Returns:
-            统计信息字典
-        """
+        """获取统计信息"""
         return self.stats.copy()
