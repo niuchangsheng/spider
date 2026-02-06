@@ -1,5 +1,5 @@
 #!/bin/bash
-# BBS论坛爬虫启动脚本（v2.2 - 支持动态页面）
+# BBS论坛爬虫启动脚本（v2.3 - 文件结构重构）
 # 自动激活虚拟环境并运行
 #
 # 使用示例:
@@ -13,12 +13,12 @@
 #   CONFIG      - 配置文件名 (默认: xindong)
 #   SUBCOMMAND  - 子命令 (默认: crawl-urls)
 #
-# v2.2 子命令:
+# v2.3 子命令:
 #   crawl-url       - 爬取单个URL (BBS帖子)
 #   crawl-urls      - 爬取配置中的URL列表
 #   crawl-board     - 爬取单个板块
 #   crawl-boards    - 爬取配置中的所有板块
-#   crawl-news      - 爬取动态新闻/公告页面 🆕
+#   crawl-news      - 爬取动态新闻/公告页面
 
 set -e
 
@@ -26,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "=========================================="
-echo "🕷️  BBS论坛爬虫启动脚本 (v2.2)"
+echo "🕷️  BBS论坛爬虫启动脚本 (v2.3 - 文件结构重构)"
 echo "=========================================="
 echo ""
 

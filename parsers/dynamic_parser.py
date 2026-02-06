@@ -111,9 +111,43 @@ class DynamicPageParser(BaseParser):
         summary_elem = element.select_one(self.summary_selector)
         summary = summary_elem.get_text(strip=True) if summary_elem else ""
         
-        # 提取链接
-        link_elem = element.select_one(self.link_selector)
-        url = link_elem.get('href') if link_elem else None
+        # 提取链接（优先从标题中提取，避免提取到图片链接）
+        url = None
+        
+        # 方法1: 从标题元素中提取链接（最可靠）
+        if title_elem:
+            title_link = title_elem.find('a', href=True)
+            if title_link:
+                url = title_link.get('href')
+        
+        # 方法2: 如果标题中没有链接，使用link_selector
+        if not url:
+            link_elem = element.select_one(self.link_selector)
+            if link_elem:
+                candidate_url = link_elem.get('href', '')
+                # 排除图片链接（包含图片扩展名或图片域名）
+                if candidate_url and not any(ext in candidate_url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', 'res.xdcdn.net']):
+                    url = candidate_url
+        
+        # 方法3: 如果还是没有，尝试查找所有链接，选择最像文章链接的
+        if not url:
+            all_links = element.select('a[href]')
+            for link in all_links:
+                href = link.get('href', '')
+                # 排除图片链接
+                if any(ext in href.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', 'res.xdcdn.net']):
+                    continue
+                # 优先选择包含数字的链接（可能是文章ID）
+                if href and any(c.isdigit() for c in href):
+                    url = href
+                    break
+            # 如果还是没有，使用第一个非图片链接
+            if not url and all_links:
+                for link in all_links:
+                    href = link.get('href', '')
+                    if not any(ext in href.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', 'res.xdcdn.net']):
+                        url = href
+                        break
         
         # 验证必需字段
         if not title or not url:
