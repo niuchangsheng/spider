@@ -1,0 +1,214 @@
+# 单元测试说明
+
+## 📋 概述
+
+本项目使用 Python `unittest` 框架进行单元测试，确保代码质量和功能正确性。
+
+## 📁 目录结构
+
+```
+tests/
+├── __init__.py
+├── run_tests.py          # 测试运行脚本
+├── run_tests.sh          # Shell 测试脚本（自动激活虚拟环境）
+├── README.md             # 本文件
+├── core/                 # core 模块测试
+│   ├── __init__.py
+│   ├── test_checkpoint.py    # CheckpointManager 测试
+│   └── test_crawl_queue.py   # CrawlQueue 测试
+├── detector/            # detector 模块测试
+│   ├── __init__.py
+│   └── test_selector_detector.py  # SelectorDetector 测试
+├── parsers/             # parsers 模块测试（待添加）
+│   └── __init__.py
+└── spiders/             # spiders 模块测试（待添加）
+    └── __init__.py
+```
+
+## 🚀 运行测试
+
+### 方法1: 使用 Shell 脚本（推荐）
+
+```bash
+# 自动激活虚拟环境并运行测试
+./tests/run_tests.sh
+
+# 生成覆盖率报告（文本格式）
+./tests/run_tests.sh --coverage
+# 或使用短参数
+./tests/run_tests.sh -c
+
+# 生成覆盖率报告（HTML格式，包含文本格式）
+./tests/run_tests.sh --html
+# 或使用短参数
+./tests/run_tests.sh -h
+```
+
+### 方法2: 使用 unittest 自动发现（推荐）
+
+```bash
+# 激活虚拟环境
+source venv/bin/activate
+
+# 运行所有测试（自动发现所有 test_*.py 文件）
+python -m unittest discover -s tests -p "test_*.py" -v
+
+# 退出虚拟环境
+deactivate
+```
+
+### 方法3: 运行特定测试
+
+```bash
+source venv/bin/activate
+
+# 运行特定测试文件
+python -m unittest tests.core.test_checkpoint
+python -m unittest tests.core.test_crawl_queue
+python -m unittest tests.detector.test_selector_detector
+
+# 运行特定测试类
+python -m unittest tests.core.test_checkpoint.TestCheckpointManager
+
+# 运行特定测试方法
+python -m unittest tests.core.test_checkpoint.TestCheckpointManager.test_save_and_load_checkpoint
+
+# 退出虚拟环境
+deactivate
+```
+
+## 📝 测试覆盖
+
+### 已实现的测试
+
+1. **CheckpointManager 测试** (`test_checkpoint.py`)
+   - ✅ 初始化测试
+   - ✅ 保存和加载检查点
+   - ✅ 文章ID相关功能
+   - ✅ 标记完成/错误
+   - ✅ 获取状态和统计信息
+   - ✅ 清除检查点
+
+2. **CrawlQueue 测试** (`test_crawl_queue.py`)
+   - ✅ 初始化测试
+   - ✅ 生产者功能
+   - ✅ 消费者功能
+   - ✅ 队列运行
+   - ✅ 错误处理
+   - ✅ 统计信息
+
+3. **AdaptiveCrawlQueue 测试** (`test_crawl_queue.py`)
+   - ✅ 初始化测试
+   - ✅ 错误率计算
+   - ✅ 自适应调整并发数
+   - ✅ 统计信息
+
+4. **SelectorDetector 测试** (`test_selector_detector.py`)
+   - ✅ 初始化测试
+   - ✅ 论坛类型检测
+   - ✅ 选择器检测
+   - ✅ 图片判断
+
+## 🧪 编写新测试
+
+### 测试文件命名规范
+
+- 测试文件必须以 `test_` 开头
+- 测试文件应该放在对应的子目录中（如 `tests/core/`）
+
+### 测试类命名规范
+
+- 测试类必须以 `Test` 开头
+- 测试类应该继承 `unittest.TestCase`
+
+### 测试方法命名规范
+
+- 测试方法必须以 `test_` 开头
+- 测试方法应该描述测试的功能
+
+### 示例
+
+```python
+import unittest
+from core.some_module import SomeClass
+
+class TestSomeClass(unittest.TestCase):
+    """SomeClass 测试类"""
+    
+    def setUp(self):
+        """测试前准备"""
+        self.instance = SomeClass()
+    
+    def tearDown(self):
+        """测试后清理"""
+        pass
+    
+    def test_some_method(self):
+        """测试某个方法"""
+        result = self.instance.some_method()
+        self.assertEqual(result, expected_value)
+```
+
+## 📊 测试覆盖率
+
+### 使用测试脚本（推荐）
+
+```bash
+# 生成文本格式覆盖率报告
+./tests/run_tests.sh --coverage
+
+# 生成HTML格式覆盖率报告（推荐，更直观）
+./tests/run_tests.sh --html
+```
+
+脚本会自动：
+- ✅ 检查并安装 `coverage` 包（如果未安装）
+- ✅ 运行所有测试并收集覆盖率数据
+- ✅ 生成文本格式覆盖率报告（显示在终端）
+- ✅ 生成HTML格式覆盖率报告（如果使用 `--html` 选项）
+  - HTML报告保存在 `htmlcov/` 目录
+  - 打开 `htmlcov/index.html` 查看详细报告
+
+### 手动运行覆盖率检查
+
+如果需要手动控制，也可以使用以下命令：
+
+```bash
+source venv/bin/activate
+
+# 安装 coverage（如果未安装）
+pip install coverage
+
+# 运行测试并生成覆盖率报告
+coverage run -m unittest discover -s tests -p "test_*.py" -v
+coverage report --show-missing  # 文本格式
+coverage html  # 生成 HTML 报告到 htmlcov/ 目录
+```
+
+## ⚠️ 注意事项
+
+1. **虚拟环境**: 所有测试必须在虚拟环境下运行
+2. **测试隔离**: 每个测试应该独立，不依赖其他测试
+3. **清理资源**: 使用 `tearDown` 清理测试产生的临时文件
+4. **异步测试**: 对于异步函数，使用 `asyncio.run()` 包装
+
+## 🔧 故障排除
+
+### 问题: ModuleNotFoundError
+
+**解决方案**: 确保在虚拟环境下运行，并且项目根目录在 Python 路径中
+
+```bash
+source venv/bin/activate
+export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+### 问题: 测试失败但代码正常
+
+**解决方案**: 检查测试数据是否正确，可能需要更新测试用例
+
+## 📚 参考资源
+
+- [Python unittest 文档](https://docs.python.org/3/library/unittest.html)
+- [unittest 最佳实践](https://docs.python.org/3/library/unittest.html#organizing-test-code)

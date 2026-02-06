@@ -58,6 +58,8 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+tests/__pycache__/
+checkpoints/  # 检查点文件（运行时生成）
 
 # 临时文件
 *.tmp
