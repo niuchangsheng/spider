@@ -3,7 +3,7 @@
 
 用于保存和恢复爬取进度，支持断点续传。
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime
 import json
