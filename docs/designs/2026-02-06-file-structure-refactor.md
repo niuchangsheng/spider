@@ -18,7 +18,7 @@ spider/
 ├── core/
 │   ├── parser.py       # BaseParser + BBSParser
 │   ├── dynamic_parser.py    # DynamicPageParser
-│   ├── dynamic_crawler.py   # DynamicNewsCrawler
+│   ├── dynamic_news_spider.py   # DynamicNewsCrawler
 │   ├── downloader.py        # ImageDownloader
 │   ├── deduplicator.py      # ImageDeduplicator
 │   ├── storage.py           # Storage
@@ -68,7 +68,7 @@ spider/
 │   ├── discuz_spider.py   # DiscuzSpider
 │   ├── phpbb_spider.py    # PhpBBSpider
 │   ├── vbulletin_spider.py # VBulletinSpider
-│   ├── dynamic_crawler.py # DynamicNewsCrawler
+│   ├── dynamic_news_spider.py # DynamicNewsCrawler
 │   └── spider_factory.py  # SpiderFactory
 │
 ├── cli/                   # 🆕 CLI层
@@ -98,7 +98,7 @@ spider/
 │   ├── parser.py          # BBSParser（继承base.BaseParser）
 │   ├── dynamic_parser.py  # DynamicPageParser
 │   ├── bbs_spider.py      # 🆕 BBSSpider + 子类（从spider.py移出）
-│   ├── dynamic_crawler.py # DynamicNewsCrawler
+│   ├── dynamic_news_spider.py # DynamicNewsCrawler
 │   ├── factory.py         # 🆕 SpiderFactory（从spider.py移出）
 │   ├── downloader.py
 │   ├── deduplicator.py
@@ -145,7 +145,7 @@ spider/
 | `spider.py` | 精简为CLI入口，只保留main()和argparse |
 | `core/parser.py` | 移除BaseParser，改为从core.base导入 |
 | `core/dynamic_parser.py` | 更新导入路径 |
-| `core/dynamic_crawler.py` | 更新导入路径 |
+| `core/dynamic_news_spider.py` | 更新导入路径 |
 
 ### 4.3 删除文件
 

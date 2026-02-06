@@ -110,7 +110,7 @@ class SpiderFactory:
         
         # 根据 spider_type 选择爬虫类型
         if spider_type == 'dynamic':
-            from spiders.dynamic_crawler import DynamicNewsCrawler
+            from spiders.dynamic_news_spider import DynamicNewsCrawler
             logger.info(f"🏭 创建爬虫: DynamicNewsCrawler")
             return DynamicNewsCrawler(config=final_config)
         

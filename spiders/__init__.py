@@ -12,7 +12,7 @@
 """
 from spiders.base import BaseSpider
 from spiders.bbs_spider import BBSSpider, DiscuzSpider, PhpBBSpider, VBulletinSpider
-from spiders.dynamic_crawler import DynamicNewsCrawler
+from spiders.dynamic_news_spider import DynamicNewsCrawler
 from spiders.spider_factory import SpiderFactory
 
 __all__ = [

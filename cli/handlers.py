@@ -10,7 +10,7 @@ from loguru import logger
 
 from config import Config, ConfigLoader, get_example_config, get_forum_boards, get_forum_urls
 from spiders import SpiderFactory
-from spiders.dynamic_crawler import DynamicNewsCrawler
+from spiders.dynamic_news_spider import DynamicNewsCrawler
 from core.downloader import ImageDownloader
 
 
