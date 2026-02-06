@@ -453,7 +453,7 @@ class ConfigLoader:
         
         try:
             import requests
-            from core.selector_detector import SelectorDetector
+            from detector.selector_detector import SelectorDetector
             
             # 获取HTML内容
             response = requests.get(url, timeout=30)

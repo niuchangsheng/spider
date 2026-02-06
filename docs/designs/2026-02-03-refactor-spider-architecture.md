@@ -103,7 +103,7 @@ config.py (统一配置，200行)
 │   └── VBULLETIN_PRESET
 └── ConfigLoader (配置加载器)
 
-core/selector_detector.py (选择器检测)
+detector/selector_detector.py (选择器检测)
 └── SelectorDetector (集成到爬虫)
 ```
 
@@ -243,7 +243,7 @@ class ConfigLoader:
     @staticmethod
     def auto_detect(url: str) -> BBSConfig:
         """自动检测配置"""
-        from core.selector_detector import SelectorDetector
+        from detector.selector_detector import SelectorDetector
         
         detector = SelectorDetector(url)
         asyncio.run(detector.detect_all())
