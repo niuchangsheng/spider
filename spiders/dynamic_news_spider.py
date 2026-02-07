@@ -4,7 +4,11 @@
 """
 import asyncio
 import aiohttp
-from typing import List, Dict, Optional
+import hashlib
+import os
+import re
+from typing import List, Dict, Optional, Tuple
+from urllib.parse import urlparse
 from loguru import logger
 from pathlib import Path
 from fake_useragent import UserAgent
@@ -14,6 +18,20 @@ from parsers.dynamic_parser import DynamicPageParser
 from core.storage import storage
 from core.checkpoint import CheckpointManager
 from core.crawl_queue import CrawlQueue, AdaptiveCrawlQueue
+from core.downloader import ImageDownloader
+
+
+def _extract_image_filename(url: str) -> str:
+    """从图片 URL 提取原始文件名（去掉尺寸后缀等）"""
+    try:
+        parsed = urlparse(url)
+        filename = os.path.basename(parsed.path)
+        clean_name = re.sub(r'-\d+x\d+', '', filename).split('?')[0]
+        if not clean_name or clean_name == '.' or '.' not in clean_name:
+            clean_name = f"{hashlib.md5(url.encode()).hexdigest()[:12]}.jpg"
+        return clean_name
+    except Exception:
+        return f"{hashlib.md5(url.encode()).hexdigest()[:12]}.jpg"
 
 
 class DynamicNewsCrawler:
@@ -583,7 +601,95 @@ class DynamicNewsCrawler:
         logger.success(f"✅ 成功爬取 {len(full_articles)}/{len(articles)} 篇文章详情")
         
         return full_articles
-    
+
+    async def crawl_news_and_download_images(
+        self,
+        url: str,
+        max_pages: Optional[int] = None,
+        resume: bool = True,
+        start_page: Optional[int] = None,
+        download_images: bool = True,
+        method: str = "ajax",
+    ) -> Tuple[int, int]:
+        """
+        一站式：列表爬取 → 文章详情 → 图片下载（与 BBS 的 crawl_thread + download_thread_images 对称）
+        队列与并发从 self.config 读取，CLI 只调此 API。
+        """
+        if method == "ajax":
+            articles = await self.crawl_dynamic_page_ajax(
+                url, max_pages=max_pages, resume=resume, start_page=start_page
+            )
+        else:
+            articles = await self.crawl_dynamic_page_selenium(url, max_clicks=max_pages)
+        if not articles:
+            logger.warning(f"⚠️  {url} 没有找到文章")
+            return (0, 0)
+        logger.info(f"✅ {url} 发现 {len(articles)} 篇文章")
+        downloaded_images = 0
+        if not download_images:
+            return (len(articles), 0)
+        full_articles = await self.crawl_articles_batch(articles)
+        if not full_articles:
+            return (len(articles), 0)
+        domain = urlparse(url).netloc
+        save_dir = self.config.image.download_dir / domain
+        save_dir.mkdir(parents=True, exist_ok=True)
+        image_tasks = []
+        for article in full_articles:
+            for img_url in article.get("images", []):
+                article_id = article.get("article_id", "unknown")
+                img_filename = _extract_image_filename(img_url)
+                final_filename = f"{article_id}_{img_filename}"
+                save_path = save_dir / final_filename
+                image_tasks.append({
+                    "url": img_url,
+                    "save_path": save_path,
+                    "metadata": {
+                        "article_id": article_id,
+                        "title": article.get("title", ""),
+                        "article_url": article.get("url", ""),
+                        "image_url": img_url,
+                    },
+                })
+        if not image_tasks:
+            logger.info("  无图片需下载")
+            return (len(articles), 0)
+        use_queue = getattr(self.config.crawler, "use_async_queue", True)
+        use_adaptive = getattr(self.config.crawler, "use_adaptive_queue", False)
+        workers = self.config.crawler.max_concurrent_requests or 5
+        queue_size = getattr(self.config.crawler, "queue_size", 1000)
+        results_container = []
+        async with ImageDownloader() as downloader:
+            async def download_one(task_info):
+                r = await downloader.download_image(
+                    task_info["url"],
+                    task_info["save_path"],
+                    task_info["metadata"],
+                )
+                if r.get("success"):
+                    results_container.append(1)
+                return r.get("success", False)
+            if use_queue:
+                if use_adaptive:
+                    q = AdaptiveCrawlQueue(
+                        initial_workers=workers,
+                        max_workers=workers * 2,
+                        min_workers=1,
+                        queue_size=queue_size,
+                    )
+                    logger.info(f"🎯 使用自适应队列下载图片: 初始并发={workers}")
+                else:
+                    q = CrawlQueue(max_workers=workers, queue_size=queue_size)
+                    logger.info(f"🚀 使用异步队列下载图片: 并发数={workers}")
+                await q.run(image_tasks, download_one)
+            else:
+                for task_info in image_tasks:
+                    await download_one(task_info)
+                    await asyncio.sleep(self.config.crawler.download_delay)
+            downloaded_images = len(results_container)
+        logger.success(f"✅ {url} 图片下载完成: {downloaded_images}/{len(image_tasks)}")
+        return (len(articles), downloaded_images)
+
     def get_statistics(self) -> Dict:
         """获取统计信息"""
         return self.stats.copy()

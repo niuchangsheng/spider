@@ -2,8 +2,6 @@
 CLI命令处理函数
 """
 import asyncio
-import re
-import os
 from typing import Dict, Any
 from urllib.parse import urlparse
 from loguru import logger
@@ -11,46 +9,7 @@ from loguru import logger
 from config import Config, ConfigLoader, get_example_config, get_forum_boards, get_forum_urls, get_news_urls
 from spiders import SpiderFactory
 from spiders.dynamic_news_spider import DynamicNewsCrawler
-from core.downloader import ImageDownloader
 from core.checkpoint import CheckpointManager
-
-
-def _extract_image_filename(url: str) -> str:
-    """
-    从图片URL提取原始文件名
-    
-    处理逻辑：
-    1. 从URL路径提取文件名
-    2. 去掉尺寸后缀（如 -1024x481）
-    3. 保留原始扩展名
-    
-    Args:
-        url: 图片URL
-    
-    Returns:
-        清理后的文件名
-    """
-    try:
-        parsed = urlparse(url)
-        filename = os.path.basename(parsed.path)
-        
-        # 去掉尺寸后缀（如 -1024x481, -300x200 等）
-        clean_name = re.sub(r'-\d+x\d+', '', filename)
-        
-        # 去掉查询参数可能带来的后缀
-        clean_name = clean_name.split('?')[0]
-        
-        # 如果文件名为空或无效，生成一个默认名
-        if not clean_name or clean_name == '.' or '.' not in clean_name:
-            import hashlib
-            hash_name = hashlib.md5(url.encode()).hexdigest()[:12]
-            clean_name = f"{hash_name}.jpg"
-        
-        return clean_name
-    except Exception:
-        import hashlib
-        hash_name = hashlib.md5(url.encode()).hexdigest()[:12]
-        return f"{hash_name}.jpg"
 
 
 async def handle_crawl_url(args):
@@ -269,146 +228,6 @@ async def handle_crawl_boards(args):
         print_statistics(spider)
 
 
-async def _crawl_single_news_url(crawler, url, args, config):
-    """爬取单个新闻URL的辅助函数"""
-    logger.info(f"🚀 开始爬取动态新闻页面: {url}")
-    
-    # 选择爬取方式
-    if args.method == 'ajax':
-        articles = await crawler.crawl_dynamic_page_ajax(
-            url,
-            max_pages=args.max_pages,
-            resume=args.resume,
-            start_page=args.start_page
-        )
-    else:  # selenium
-        articles = await crawler.crawl_dynamic_page_selenium(
-            url,
-            max_clicks=args.max_pages
-        )
-    
-    if not articles:
-        logger.warning(f"⚠️  {url} 没有找到文章")
-        return 0, 0
-    
-    logger.info(f"✅ {url} 发现 {len(articles)} 篇文章")
-    
-    downloaded_images = 0
-    total_images = 0
-    
-    # 是否下载文章详情和图片
-    if args.download_images:
-        logger.info(f"🚀 开始下载文章详情和图片...")
-        
-        # 获取队列配置
-        use_queue = getattr(config.crawler, 'use_async_queue', True)
-        if hasattr(args, 'use_async_queue') and args.use_async_queue is not None:
-            use_queue = args.use_async_queue
-        
-        max_workers = getattr(args, 'max_workers', None) or config.crawler.max_concurrent_requests
-        use_adaptive = getattr(config.crawler, 'use_adaptive_queue', False)
-        if hasattr(args, 'use_adaptive_queue') and args.use_adaptive_queue is not None:
-            use_adaptive = args.use_adaptive_queue
-        
-        # 爬取文章详情（使用队列）
-        full_articles = await crawler.crawl_articles_batch(
-            articles,
-            use_queue=use_queue,
-            max_workers=max_workers,
-            use_adaptive=use_adaptive
-        )
-        
-        # 从URL提取域名作为存储目录
-        domain = urlparse(url).netloc  # 如 sxd.xd.com
-        save_dir = config.image.download_dir / domain
-        save_dir.mkdir(parents=True, exist_ok=True)
-        
-        async with ImageDownloader() as downloader:
-            # 准备图片下载任务列表
-            image_tasks = []
-            for article in full_articles:
-                images = article.get('images', [])
-                if not images:
-                    continue
-                
-                total_images += len(images)
-                article_id = article.get('article_id', 'unknown')
-                
-                for img_url in images:
-                    # 从图片URL提取原始文件名
-                    img_filename = _extract_image_filename(img_url)
-                    # 生成最终文件名: [article_id]_[原始图片名]
-                    final_filename = f"{article_id}_{img_filename}"
-                    save_path = save_dir / final_filename
-                    
-                    metadata = {
-                        'article_id': article_id,
-                        'title': article.get('title', ''),
-                        'article_url': article.get('url', ''),
-                        'image_url': img_url
-                    }
-                    
-                    image_tasks.append({
-                        'url': img_url,
-                        'save_path': save_path,
-                        'metadata': metadata
-                    })
-            
-            # 使用队列并发下载图片（如果启用）
-            if use_queue and image_tasks:
-                from core.crawl_queue import CrawlQueue, AdaptiveCrawlQueue
-                
-                workers = max_workers or config.crawler.max_concurrent_requests or 5
-                queue_size = config.crawler.queue_size or 1000
-                
-                if use_adaptive:
-                    queue = AdaptiveCrawlQueue(
-                        initial_workers=workers,
-                        max_workers=workers * 2,
-                        min_workers=1,
-                        queue_size=queue_size
-                    )
-                    logger.info(f"🎯 使用自适应队列下载图片: 初始并发={workers}")
-                else:
-                    queue = CrawlQueue(max_workers=workers, queue_size=queue_size)
-                    logger.info(f"🚀 使用异步队列下载图片: 并发数={workers}")
-                
-                # 定义图片下载任务函数
-                downloaded_count = 0
-                results_container = []
-                
-                async def download_image_task_with_result(task_info):
-                    result = await downloader.download_image(
-                        task_info['url'],
-                        task_info['save_path'],
-                        task_info['metadata']
-                    )
-                    if result.get('success'):
-                        results_container.append(1)
-                    return result.get('success', False)
-                
-                await queue.run(image_tasks, download_image_task_with_result)
-                downloaded_images = len(results_container)
-            else:
-                # 串行下载（兼容模式）
-                logger.debug("📝 使用串行模式下载图片")
-                for task_info in image_tasks:
-                    result = await downloader.download_image(
-                        task_info['url'],
-                        task_info['save_path'],
-                        task_info['metadata']
-                    )
-                    if result.get('success'):
-                        downloaded_images += 1
-                    
-                    # 添加延迟
-                    await asyncio.sleep(config.crawler.download_delay)
-        
-        logger.success(f"✅ {url} 图片下载完成: {downloaded_images}/{total_images}")
-    
-    return len(articles), downloaded_images
-
-
 async def handle_crawl_news(args):
     """处理 crawl-news 子命令"""
     print(f"\n📌 命令: 爬取动态新闻页面")
@@ -473,32 +292,31 @@ async def handle_crawl_news(args):
     if hasattr(args, 'use_async_queue') and args.use_async_queue is not None:
         config.crawler.use_async_queue = args.use_async_queue
     
-    # 创建爬虫
     crawler = DynamicNewsCrawler(config)
-    
-    # 爬取所有URL
+    total_articles = 0
+    total_downloaded_images = 0
     async with crawler:
-        total_articles = 0
-        total_downloaded_images = 0
-        
         for url in news_urls:
-            articles_count, images_count = await _crawl_single_news_url(
-                crawler, url, args, config
+            articles_count, images_count = await crawler.crawl_news_and_download_images(
+                url,
+                max_pages=args.max_pages,
+                resume=args.resume,
+                start_page=args.start_page,
+                download_images=args.download_images,
+                method=args.method,
             )
             total_articles += articles_count
             total_downloaded_images += images_count
-        
-        # 输出统计
-        stats = crawler.get_statistics()
-        print("\n" + "=" * 60)
-        print("📊 爬取统计:")
-        print(f"  爬取URL数: {len(news_urls)}")
-        print(f"  发现文章: {total_articles}")
-        if args.download_images:
-            print(f"  爬取详情: {stats['articles_crawled']}")
-            print(f"  爬取失败: {stats['articles_failed']}")
-            print(f"  下载图片: {total_downloaded_images}")
-        print("=" * 60)
+    stats = crawler.get_statistics()
+    print("\n" + "=" * 60)
+    print("📊 爬取统计:")
+    print(f"  爬取URL数: {len(news_urls)}")
+    print(f"  发现文章: {total_articles}")
+    if args.download_images:
+        print(f"  爬取详情: {stats['articles_crawled']}")
+        print(f"  爬取失败: {stats['articles_failed']}")
+        print(f"  下载图片: {total_downloaded_images}")
+    print("=" * 60)
 
 
 def print_statistics(spider):
