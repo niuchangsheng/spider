@@ -1,37 +1,28 @@
 {
   "name": "心动论坛",
+  "crawler_type": "bbs",
   "forum_type": "discuz",
   "base_url": "https://bbs.xd.com",
   "login_url": "https://bbs.xd.com/member.php?mod=logging&action=login",
-  
   "selectors": {
     "thread_list": "tbody[id^='normalthread'], tbody[id^='stickthread']",
     "thread_link": "a.s.xst, a.xst",
     "image": "img.zoom,img[file],img[aid],div.pattl img,div.pcb img",
     "next_page": "a.nxt, div.pg a.nxt"
   },
-  
   "crawler": {
     "max_concurrent_requests": 3,
-    "download_delay": 2.0,
+    "download_delay": 2,
     "request_timeout": 30,
     "max_retries": 3
   },
-  
   "image": {
     "min_width": 300,
     "min_height": 300,
     "min_size": 30000
   },
-  
-  "boards": [
-    {
-      "name": "神仙道玩家交流",
-      "url": "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21"
-    }
-  ],
-  
   "urls": [
+    { "type": "board", "name": "神仙道玩家交流", "url": "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21" },
     "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145&extra=page%3D1"
   ]
 }

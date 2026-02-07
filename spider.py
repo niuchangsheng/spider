@@ -15,13 +15,11 @@ from pathlib import Path
 from loguru import logger
 
 from cli import (
-    create_parser, 
-    handle_crawl_url, 
-    handle_crawl_urls, 
-    handle_crawl_board, 
-    handle_crawl_boards, 
+    create_parser,
+    handle_crawl,
+    handle_crawl_bbs,
     handle_crawl_news,
-    handle_checkpoint_status
+    handle_checkpoint_status,
 )
 
 
@@ -55,14 +53,10 @@ async def main():
     print("=" * 60)
     
     # 根据子命令执行相应操作
-    if args.command == 'crawl-url':
-        await handle_crawl_url(args)
-    elif args.command == 'crawl-urls':
-        await handle_crawl_urls(args)
-    elif args.command == 'crawl-board':
-        await handle_crawl_board(args)
-    elif args.command == 'crawl-boards':
-        await handle_crawl_boards(args)
+    if args.command == 'crawl':
+        await handle_crawl(args)
+    elif args.command == 'crawl-bbs':
+        await handle_crawl_bbs(args)
     elif args.command == 'crawl-news':
         await handle_crawl_news(args)
     elif args.command == 'checkpoint-status':

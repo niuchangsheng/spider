@@ -6,10 +6,8 @@ CLI模块
 - commands: argparse 定义
 """
 from cli.handlers import (
-    handle_crawl_url,
-    handle_crawl_urls,
-    handle_crawl_board,
-    handle_crawl_boards,
+    handle_crawl,
+    handle_crawl_bbs,
     handle_crawl_news,
     handle_checkpoint_status,
     print_statistics,
@@ -17,10 +15,8 @@ from cli.handlers import (
 from cli.commands import create_parser
 
 __all__ = [
-    'handle_crawl_url',
-    'handle_crawl_urls',
-    'handle_crawl_board',
-    'handle_crawl_boards',
+    'handle_crawl',
+    'handle_crawl_bbs',
     'handle_crawl_news',
     'handle_checkpoint_status',
     'print_statistics',

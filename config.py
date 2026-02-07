@@ -3,7 +3,7 @@
 统一配置管理，支持多论坛预设
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal, Union
 import os
 import json
 import asyncio
@@ -117,13 +117,38 @@ class LogConfig(BaseModel):
 
 
 class Config(BaseModel):
-    """全局配置"""
+    """全局配置（统一 schema：bbs 与 news 共用，由 crawler_type 区分）"""
+    # 爬虫类型：由 config 决定，CLI 无需再指定
+    crawler_type: Literal["bbs", "news"] = Field(default="bbs", description="爬虫类型: bbs | news")
     bbs: BBSConfig = Field(default_factory=BBSConfig)
     crawler: CrawlerConfig = Field(default_factory=CrawlerConfig)
     image: ImageConfig = Field(default_factory=ImageConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     log: LogConfig = Field(default_factory=LogConfig)
-    
+    # 爬取目标：统一字段 urls。BBS 下用 type 区分：{ "type": "board", "name", "url" }=板块，字符串=网页
+    urls: List[Union[str, Dict[str, Any]]] = Field(
+        default_factory=list,
+        description="统一 URL 列表：news 为字符串列表；bbs 为字符串(网页)与 {type:board, name, url}(板块) 混合",
+    )
+
+    def get_boards(self) -> List[Dict[str, str]]:
+        """从 urls 中解析出 BBS 板块列表（仅 crawler_type=bbs 时有意义）"""
+        return [
+            {"name": x["name"], "url": x["url"]}
+            for x in self.urls
+            if isinstance(x, dict) and x.get("type") == "board" and x.get("url")
+        ]
+
+    def get_page_urls(self) -> List[str]:
+        """从 urls 中解析出网页 URL 列表：BBS=帖子 URL，news=新闻入口 URL"""
+        out: List[str] = []
+        for x in self.urls:
+            if isinstance(x, str):
+                out.append(x)
+            elif isinstance(x, dict) and x.get("type") != "board" and x.get("url"):
+                out.append(x["url"])
+        return out
+
     def __init__(self, **data):
         super().__init__(**data)
         # 创建必要的目录
@@ -220,17 +245,39 @@ def load_forum_config_file(config_file: Path) -> Dict[str, Any]:
 
 def create_config_from_dict(data: Dict[str, Any]) -> Config:
     """
-    从字典创建Config对象
+    从字典创建 Config 对象（统一 schema：支持 bbs 与 news，由 crawler_type 区分）
     
     Args:
         data: 配置字典
     
     Returns:
-        Config实例
+        Config 实例
     """
     selectors = data.get("selectors", {})
-    
+    # crawler_type 优先从字段读取，否则由 forum_type 推断
+    crawler_type = data.get("crawler_type") or (
+        "news" if data.get("forum_type") == "news" else "bbs"
+    )
+    if crawler_type not in ("bbs", "news"):
+        crawler_type = "bbs"
+
+    # 统一 urls：兼容旧字段 news_urls、boards+urls
+    raw_urls = data.get("urls", data.get("news_urls", data.get("example_threads", [])))
+    boards_legacy = data.get("boards", [])
+    if crawler_type == "bbs" and boards_legacy and not any(
+        isinstance(x, dict) and x.get("type") == "board" for x in raw_urls
+    ):
+        unified_urls: List[Union[str, Dict[str, Any]]] = [
+            {"type": "board", "name": b["name"], "url": b["url"]} for b in boards_legacy
+        ]
+        unified_urls += [u for u in raw_urls if isinstance(u, str)] + [
+            u for u in raw_urls if isinstance(u, dict)
+        ]
+    else:
+        unified_urls = list(raw_urls)
+
     return Config(
+        crawler_type=crawler_type,
         bbs={
             "name": data.get("name", "Unknown Forum"),
             "forum_type": data.get("forum_type", "custom"),
@@ -243,6 +290,7 @@ def create_config_from_dict(data: Dict[str, Any]) -> Config:
         },
         crawler=data.get("crawler", {}),
         image=data.get("image", {}),
+        urls=unified_urls,
     )
 
 
@@ -325,7 +373,15 @@ def get_forum_boards(config_name: str) -> List[Dict[str, str]]:
     
     try:
         data = load_forum_config_file(config_file)
-        return data.get("boards", [])
+        urls = data.get("urls", [])
+        boards = [
+            {"name": x["name"], "url": x["url"]}
+            for x in urls
+            if isinstance(x, dict) and x.get("type") == "board" and x.get("url")
+        ]
+        if not boards:
+            return data.get("boards", [])
+        return boards
     except Exception as e:
         logger.error(f"读取板块配置失败: {e}")
         return []
@@ -352,8 +408,12 @@ def get_forum_urls(config_name: str) -> List[str]:
     
     try:
         data = load_forum_config_file(config_file)
-        # 兼容旧格式 example_threads
-        return data.get("urls", data.get("example_threads", []))
+        urls = data.get("urls", data.get("example_threads", []))
+        return [
+            x if isinstance(x, str) else x.get("url", "")
+            for x in urls
+            if (x if isinstance(x, str) else x.get("url"))
+        ]
     except Exception as e:
         logger.error(f"读取URL列表失败: {e}")
         return []
@@ -380,7 +440,12 @@ def get_news_urls(config_name: str) -> List[str]:
     
     try:
         data = load_forum_config_file(config_file)
-        return data.get("news_urls", [])
+        urls = data.get("urls", data.get("news_urls", []))
+        return [
+            x if isinstance(x, str) else x.get("url", "")
+            for x in urls
+            if (x if isinstance(x, str) else x.get("url"))
+        ]
     except Exception as e:
         logger.error(f"读取新闻URL列表失败: {e}")
         return []
