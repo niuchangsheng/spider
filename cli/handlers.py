@@ -33,8 +33,6 @@ async def handle_crawl_bbs(args):
         config.crawler.max_concurrent_requests = args.max_workers
     if getattr(args, 'use_adaptive_queue', None) is not None:
         config.crawler.use_adaptive_queue = args.use_adaptive_queue
-    if getattr(args, 'use_async_queue', None) is not None:
-        config.crawler.use_async_queue = args.use_async_queue
 
     spider = SpiderFactory.create(config=config)
     async with spider:
@@ -66,7 +64,7 @@ async def handle_crawl_news(args):
     news_urls = [args.url]
     print(f"\n📌 命令: 爬取动态新闻页面")
     print(f"URL: {args.url}")
-    print(f"方式: {args.method}")
+    print(f"方式: 自动识别（Ajax 优先，无结果则 Selenium）")
     if args.max_pages:
         print(f"最大页数: {args.max_pages}")
     else:
@@ -75,10 +73,6 @@ async def handle_crawl_news(args):
         print(f"并发数: {args.max_workers} (命令行指定)")
     if hasattr(args, 'use_adaptive_queue') and args.use_adaptive_queue:
         print(f"队列模式: 自适应队列")
-    elif hasattr(args, 'use_async_queue') and args.use_async_queue is False:
-        print(f"队列模式: 串行模式（禁用异步队列）")
-    else:
-        print(f"队列模式: 异步队列（默认）")
 
     if args.config:
         logger.info(f"📁 使用配置文件: {args.config}")
@@ -95,9 +89,7 @@ async def handle_crawl_news(args):
         config.crawler.max_concurrent_requests = args.max_workers
     if hasattr(args, 'use_adaptive_queue') and args.use_adaptive_queue is not None:
         config.crawler.use_adaptive_queue = args.use_adaptive_queue
-    if hasattr(args, 'use_async_queue') and args.use_async_queue is not None:
-        config.crawler.use_async_queue = args.use_async_queue
-    
+
     crawler = DynamicNewsCrawler(config)
     total_articles = 0
     total_downloaded_images = 0
@@ -109,7 +101,6 @@ async def handle_crawl_news(args):
                 resume=args.resume,
                 start_page=args.start_page,
                 download_images=args.download_images,
-                method=args.method,
             )
             total_articles += articles_count
             total_downloaded_images += images_count
@@ -146,8 +137,6 @@ async def handle_crawl(args):
         config.crawler.max_concurrent_requests = args.max_workers
     if getattr(args, 'use_adaptive_queue', None) is not None:
         config.crawler.use_adaptive_queue = args.use_adaptive_queue
-    if getattr(args, 'use_async_queue', None) is not None:
-        config.crawler.use_async_queue = args.use_async_queue
 
     if config.crawler_type == "news":
         print(f"\n📌 命令: 爬取（由 config 决定）— 类型: 新闻 (crawler_type=news)")
@@ -166,7 +155,6 @@ async def handle_crawl(args):
                     resume=getattr(args, 'resume', True),
                     start_page=getattr(args, 'start_page', None),
                     download_images=getattr(args, 'download_images', False),
-                    method=getattr(args, 'method', 'ajax'),
                 )
                 total_articles += a
                 total_images += i

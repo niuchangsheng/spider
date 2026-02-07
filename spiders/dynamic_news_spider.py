@@ -602,6 +602,27 @@ class DynamicNewsCrawler:
         
         return full_articles
 
+    async def crawl_dynamic_page(
+        self,
+        url: str,
+        max_pages: Optional[int] = None,
+        resume: bool = True,
+        start_page: Optional[int] = None,
+    ) -> List[Dict]:
+        """
+        爬取动态页文章列表（自动识别：先探测首页，有文章走 Ajax，无则走 Selenium）
+        """
+        html = await self.fetch_page(url, is_ajax=True)
+        if html:
+            probe = self.parser.parse_articles(html)
+            if probe:
+                logger.info("   探测到首页有文章，使用 Ajax 方式")
+                return await self.crawl_dynamic_page_ajax(
+                    url, max_pages=max_pages, resume=resume, start_page=start_page
+                )
+        logger.info("   Ajax 首页无文章或请求失败，改用 Selenium 方式")
+        return await self.crawl_dynamic_page_selenium(url, max_clicks=max_pages) or []
+
     async def crawl_news_and_download_images(
         self,
         url: str,
@@ -609,18 +630,14 @@ class DynamicNewsCrawler:
         resume: bool = True,
         start_page: Optional[int] = None,
         download_images: bool = True,
-        method: str = "ajax",
     ) -> Tuple[int, int]:
         """
-        一站式：列表爬取 → 文章详情 → 图片下载（与 BBS 的 crawl_thread + download_thread_images 对称）
-        队列与并发从 self.config 读取，CLI 只调此 API。
+        一站式：列表爬取（自动识别）→ crawl_articles_batch → 图片下载。
+        队列与并发从 self.config 读取。
         """
-        if method == "ajax":
-            articles = await self.crawl_dynamic_page_ajax(
-                url, max_pages=max_pages, resume=resume, start_page=start_page
-            )
-        else:
-            articles = await self.crawl_dynamic_page_selenium(url, max_clicks=max_pages)
+        articles = await self.crawl_dynamic_page(
+            url, max_pages=max_pages, resume=resume, start_page=start_page
+        )
         if not articles:
             logger.warning(f"⚠️  {url} 没有找到文章")
             return (0, 0)
@@ -628,7 +645,11 @@ class DynamicNewsCrawler:
         downloaded_images = 0
         if not download_images:
             return (len(articles), 0)
-        full_articles = await self.crawl_articles_batch(articles)
+        use_adaptive = getattr(self.config.crawler, "use_adaptive_queue", False)
+        workers = self.config.crawler.max_concurrent_requests or 5
+        full_articles = await self.crawl_articles_batch(
+            articles, use_queue=True, max_workers=workers, use_adaptive=use_adaptive
+        )
         if not full_articles:
             return (len(articles), 0)
         domain = urlparse(url).netloc
@@ -654,7 +675,6 @@ class DynamicNewsCrawler:
         if not image_tasks:
             logger.info("  无图片需下载")
             return (len(articles), 0)
-        use_queue = getattr(self.config.crawler, "use_async_queue", True)
         use_adaptive = getattr(self.config.crawler, "use_adaptive_queue", False)
         workers = self.config.crawler.max_concurrent_requests or 5
         queue_size = getattr(self.config.crawler, "queue_size", 1000)
@@ -669,23 +689,18 @@ class DynamicNewsCrawler:
                 if r.get("success"):
                     results_container.append(1)
                 return r.get("success", False)
-            if use_queue:
-                if use_adaptive:
-                    q = AdaptiveCrawlQueue(
-                        initial_workers=workers,
-                        max_workers=workers * 2,
-                        min_workers=1,
-                        queue_size=queue_size,
-                    )
-                    logger.info(f"🎯 使用自适应队列下载图片: 初始并发={workers}")
-                else:
-                    q = CrawlQueue(max_workers=workers, queue_size=queue_size)
-                    logger.info(f"🚀 使用异步队列下载图片: 并发数={workers}")
-                await q.run(image_tasks, download_one)
+            if use_adaptive:
+                q = AdaptiveCrawlQueue(
+                    initial_workers=workers,
+                    max_workers=workers * 2,
+                    min_workers=1,
+                    queue_size=queue_size,
+                )
+                logger.info(f"🎯 使用自适应队列下载图片: 初始并发={workers}")
             else:
-                for task_info in image_tasks:
-                    await download_one(task_info)
-                    await asyncio.sleep(self.config.crawler.download_delay)
+                q = CrawlQueue(max_workers=workers, queue_size=queue_size)
+                logger.info(f"🚀 使用异步队列下载图片: 并发数={workers}")
+            await q.run(image_tasks, download_one)
             downloaded_images = len(results_container)
         logger.success(f"✅ {url} 图片下载完成: {downloaded_images}/{len(image_tasks)}")
         return (len(articles), downloaded_images)

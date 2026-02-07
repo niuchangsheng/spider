@@ -51,7 +51,6 @@ class CrawlerConfig(BaseModel):
     request_timeout: int = Field(default=30, description="请求超时时间")
     
     # 异步任务队列
-    use_async_queue: bool = Field(default=True, description="是否使用异步任务队列")
     use_adaptive_queue: bool = Field(default=False, description="是否使用自适应队列（根据错误率调整并发）")
     queue_size: int = Field(default=1000, description="队列最大容量")
     

@@ -52,13 +52,8 @@ def create_parser() -> argparse.ArgumentParser:
                               help='最大并发数')
     parser_crawl.add_argument('--use-adaptive-queue', action='store_true', default=None,
                               help='使用自适应队列')
-    parser_crawl.add_argument('--no-async-queue', dest='use_async_queue', action='store_false',
-                              help='禁用异步队列')
     parser_crawl.add_argument('--download-images', action='store_true',
                               help='（仅新闻）下载文章中的图片')
-    parser_crawl.add_argument('--method', type=str, default='ajax',
-                              choices=['ajax', 'selenium'],
-                              help='（仅新闻）爬取方式：ajax 或 selenium')
 
     # ============================================================================
     # 子命令: crawl-bbs - BBS 单帖/单板块（位置参数 + --type thread|board）
@@ -75,7 +70,6 @@ def create_parser() -> argparse.ArgumentParser:
     parser_bbs.add_argument('--start-page', type=int, default=None, help='起始页码')
     parser_bbs.add_argument('--max-workers', type=int, default=None, help='最大并发数')
     parser_bbs.add_argument('--use-adaptive-queue', action='store_true', default=None, help='使用自适应队列')
-    parser_bbs.add_argument('--no-async-queue', dest='use_async_queue', action='store_false', help='禁用异步队列')
 
     # ============================================================================
     # 子命令: crawl-news - 爬取动态新闻单页（必须传 URL；爬全量用 crawl --config sxd）
@@ -84,14 +78,12 @@ def create_parser() -> argparse.ArgumentParser:
     parser_news.add_argument('url', type=str, help='新闻页面 URL')
     parser_news.add_argument('--config', type=str, help='配置文件名（可选，提供爬虫参数）')
     parser_news.add_argument('--max-pages', type=int, default=None, help='最大页数')
-    parser_news.add_argument('--method', type=str, default='ajax', choices=['ajax', 'selenium'], help='爬取方式')
     parser_news.add_argument('--download-images', action='store_true', help='是否下载文章中的图片')
     parser_news.add_argument('--resume', action='store_true', default=True, help='从检查点恢复')
     parser_news.add_argument('--no-resume', dest='resume', action='store_false', help='不从检查点恢复')
     parser_news.add_argument('--start-page', type=int, default=None, help='起始页码')
     parser_news.add_argument('--max-workers', type=int, default=None, help='最大并发数')
     parser_news.add_argument('--use-adaptive-queue', action='store_true', default=None, help='使用自适应队列')
-    parser_news.add_argument('--no-async-queue', dest='use_async_queue', action='store_false', help='禁用异步队列')
 
     # ============================================================================
     # 子命令: checkpoint-status - 查看检查点状态
