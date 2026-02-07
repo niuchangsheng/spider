@@ -100,16 +100,11 @@ class ImageConfig(BaseModel):
 
 
 class DatabaseConfig(BaseModel):
-    """数据库配置"""
-    # MongoDB
-    mongodb_uri: str = Field(default="mongodb://localhost:27017/", description="MongoDB连接URI")
-    mongodb_db: str = Field(default="bbs_spider", description="数据库名称")
-    
-    # Redis
-    redis_host: str = Field(default="localhost", description="Redis主机")
-    redis_port: int = Field(default=6379, description="Redis端口")
-    redis_db: int = Field(default=0, description="Redis数据库")
-    redis_password: Optional[str] = Field(default=None, description="Redis密码")
+    """数据库配置（v2.4：SQLite 为主，无外部依赖）"""
+    sqlite_path: Path = Field(
+        default=BASE_DIR / "data" / "bbs_spider.db",
+        description="SQLite 数据库文件路径"
+    )
 
 
 class LogConfig(BaseModel):
@@ -139,6 +134,7 @@ class Config(BaseModel):
         self.image.download_dir.mkdir(parents=True, exist_ok=True)
         self.image.temp_dir.mkdir(parents=True, exist_ok=True)
         self.log.log_dir.mkdir(parents=True, exist_ok=True)
+        self.database.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
 
 
 # ============================================================================
@@ -512,8 +508,7 @@ def load_config_from_env() -> Config:
             "use_proxy": os.getenv("USE_PROXY", "false").lower() == "true",
         },
         "database": {
-            "mongodb_uri": os.getenv("MONGODB_URI", "mongodb://localhost:27017/"),
-            "redis_host": os.getenv("REDIS_HOST", "localhost"),
+            "sqlite_path": Path(os.getenv("SQLITE_PATH", str(BASE_DIR / "data" / "bbs_spider.db"))),
         },
         "log": {
             "log_level": os.getenv("LOG_LEVEL", "INFO"),

@@ -11,6 +11,7 @@ from fake_useragent import UserAgent
 
 from config import Config
 from parsers.dynamic_parser import DynamicPageParser
+from core.storage import storage
 from core.checkpoint import CheckpointManager
 from core.crawl_queue import CrawlQueue, AdaptiveCrawlQueue
 
@@ -76,25 +77,21 @@ class DynamicNewsCrawler:
         await self.close()
     
     async def init(self):
-        """初始化爬虫"""
+        """初始化爬虫（接入 Storage，使 CheckpointManager 薄封装可读写 checkpoints 表）"""
         logger.info("⚙️  初始化爬虫组件...")
-        
+        storage.connect()
         self.ua = UserAgent()
-        
-        # 创建HTTP会话
         timeout = aiohttp.ClientTimeout(total=self.config.crawler.request_timeout)
         self.session = aiohttp.ClientSession(timeout=timeout)
-        
         logger.debug("✓ HTTP会话已创建")
     
     async def close(self):
         """关闭爬虫"""
         logger.info("🔒 关闭爬虫...")
-        
         if self.session:
             await self.session.close()
             logger.debug("✓ HTTP会话已关闭")
-        
+        storage.close()
         logger.info(f"📊 爬虫统计: {self.get_statistics()}")
     
     def get_headers(self) -> Dict[str, str]:
@@ -252,23 +249,27 @@ class DynamicNewsCrawler:
                     logger.info(f"✅ 第{page}页没有文章，停止爬取")
                     break
             
-                # 过滤重复文章（基于 article_id 去重）
-                # 策略：只使用 seen_article_ids 集合进行精确去重（不依赖ID范围，因为列表可能乱序）
-                # 注意：min/max_article_id 仅用于统计和日志，不用于去重判断
+                # 过滤重复文章（与 BBS 统一：Storage 为权威，Checkpoint 为本轮+断点恢复）
+                # 1) 先查 Storage.article_exists（跨任务权威，与 thread_exists 对称）
+                # 2) 再查 seen_article_ids（本轮 + 断点恢复的集合）
                 new_articles = []
-                has_new_articles_beyond_max = False  # 标记是否有超过 max_article_id 的新文章
+                has_new_articles_beyond_max = False
                 
                 for article in articles:
                     article_id = article['article_id']
                     
-                    # 只通过集合去重（精确，适用于任何排序方式）
+                    if storage.article_exists(article_id):
+                        logger.debug(f"⏭️  跳过已爬取文章: {article_id} (Storage 已存在)")
+                        seen_article_ids.add(article_id)  # 同步到本轮集合，避免重复查库
+                        continue
                     if article_id in seen_article_ids:
-                        logger.debug(f"⏭️  跳过已爬取文章: {article_id} (在集合中)")
+                        logger.debug(f"⏭️  跳过已爬取文章: {article_id} (本轮已见)")
                         continue
                     
-                    # 新文章，添加到列表
                     seen_article_ids.add(article_id)
                     new_articles.append(article)
+                    # 持久化到 Storage，下次运行可直接 article_exists 跳过（与 save_thread 对称）
+                    storage.save_article({**article, "site": site, "board": "news"})
                     
                     # 更新最小/最大 article_id（用于统计和日志，不用于去重）
                     try:

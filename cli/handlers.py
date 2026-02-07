@@ -515,63 +515,60 @@ def print_statistics(spider):
 
 
 async def handle_checkpoint_status(args):
-    """处理 checkpoint-status 子命令"""
+    """处理 checkpoint-status 子命令（检查点基于 Storage，需先连接）"""
+    from core.storage import storage
+
     print(f"\n📌 命令: 查看检查点状态")
     print(f"网站: {args.site}")
     print(f"板块: {args.board}")
-    
-    # 创建检查点管理器
-    checkpoint = CheckpointManager(site=args.site, board=args.board)
-    
-    # 如果指定清除
-    if args.clear:
-        if checkpoint.exists():
-            checkpoint.clear_checkpoint()
-            print("✅ 检查点已清除")
-        else:
+    storage.connect()
+    try:
+        checkpoint = CheckpointManager(site=args.site, board=args.board)
+        if args.clear:
+            if checkpoint.exists():
+                checkpoint.clear_checkpoint()
+                print("✅ 检查点已清除")
+            else:
+                print("ℹ️  没有找到检查点")
+            return
+
+        if not checkpoint.exists():
             print("ℹ️  没有找到检查点")
-        return
-    
-    # 查看检查点状态
-    if not checkpoint.exists():
-        print("ℹ️  没有找到检查点")
-        print(f"   检查点文件: {checkpoint.checkpoint_file}")
-        return
-    
-    # 加载检查点数据
-    data = checkpoint.load_checkpoint()
-    if not data:
-        print("❌ 无法加载检查点数据")
-        return
-    
-    # 显示检查点信息
-    print("\n" + "=" * 60)
-    print("📂 检查点信息:")
-    print(f"  文件路径: {checkpoint.checkpoint_file}")
-    print(f"  状态: {data.get('status', 'unknown')}")
-    print(f"  当前页: {data.get('current_page', 0)}")
-    print(f"  最后帖子ID: {data.get('last_thread_id', 'N/A')}")
-    print(f"  创建时间: {data.get('created_at', 'N/A')}")
-    print(f"  更新时间: {data.get('last_update_time', 'N/A')}")
-    
-    # 显示 article_id 相关信息（用于动态新闻）
-    seen_article_ids = data.get('seen_article_ids', [])
-    if seen_article_ids:
-        print(f"\n📋 文章ID信息:")
-        print(f"  已爬取文章数: {len(seen_article_ids)}")
-        if data.get('min_article_id'):
-            print(f"  最小文章ID: {data.get('min_article_id')}")
-        if data.get('max_article_id'):
-            print(f"  最大文章ID: {data.get('max_article_id')}")
-    
-    # 显示统计信息
-    stats = data.get('stats', {})
-    if stats:
-        print("\n📊 统计信息:")
-        print(f"  已爬取帖子: {stats.get('crawled_count', stats.get('articles_found', 0))}")
-        print(f"  下载图片: {stats.get('images_downloaded', 0)}")
-        print(f"  失败数: {stats.get('failed_count', 0)}")
-        if 'last_error' in stats:
-            print(f"  最后错误: {stats['last_error']}")
-    
-    print("=" * 60)
+            print(f"   存储: {checkpoint.checkpoint_file}")
+            return
+
+        data = checkpoint.load_checkpoint()
+        if not data:
+            print("❌ 无法加载检查点数据")
+            return
+
+        print("\n" + "=" * 60)
+        print("📂 检查点信息:")
+        print(f"  存储: {checkpoint.checkpoint_file}")
+        print(f"  状态: {data.get('status', 'unknown')}")
+        print(f"  当前页: {data.get('current_page', 0)}")
+        print(f"  最后帖子ID: {data.get('last_thread_id', 'N/A')}")
+        print(f"  创建时间: {data.get('created_at', 'N/A')}")
+        print(f"  更新时间: {data.get('last_update_time', 'N/A')}")
+
+        seen_article_ids = data.get('seen_article_ids', [])
+        if seen_article_ids:
+            print(f"\n📋 文章ID信息:")
+            print(f"  已爬取文章数: {len(seen_article_ids)}")
+            if data.get('min_article_id'):
+                print(f"  最小文章ID: {data.get('min_article_id')}")
+            if data.get('max_article_id'):
+                print(f"  最大文章ID: {data.get('max_article_id')}")
+
+        stats = data.get('stats', {})
+        if stats:
+            print("\n📊 统计信息:")
+            print(f"  已爬取帖子: {stats.get('crawled_count', stats.get('articles_found', 0))}")
+            print(f"  下载图片: {stats.get('images_downloaded', 0)}")
+            print(f"  失败数: {stats.get('failed_count', 0)}")
+            if 'last_error' in stats:
+                print(f"  最后错误: {stats['last_error']}")
+
+        print("=" * 60)
+    finally:
+        storage.close()
