@@ -59,8 +59,8 @@ class BBSSpider(BaseSpider):
         # 调用基类初始化
         super().__init__(final_config)
         
-        # BBS特有组件
-        self.parser = BBSParser()
+        # BBS特有组件（传入当前配置，否则解析器会用全局默认选择器导致列表页解析为 0 条）
+        self.parser = BBSParser(self.config)
         self.deduplicator = ImageDeduplicator(use_perceptual_hash=True)
         
         # BBS特有统计信息（扩展基类stats）
