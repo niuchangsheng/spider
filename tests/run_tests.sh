@@ -33,16 +33,21 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 检查虚拟环境
-if [ ! -d "venv" ]; then
-    echo "❌ 错误: 未找到虚拟环境 venv/"
-    echo "请先创建虚拟环境: python3 -m venv venv"
+# 优先 .venv，其次 venv
+VENV_DIR=
+if [ -d ".venv" ]; then
+    VENV_DIR=".venv"
+elif [ -d "venv" ]; then
+    VENV_DIR="venv"
+fi
+if [ -z "$VENV_DIR" ]; then
+    echo "❌ 错误: 未找到虚拟环境 .venv/ 或 venv/"
+    echo "请先创建: python3 -m venv .venv"
     exit 1
 fi
 
-# 激活虚拟环境
-echo "🔧 激活虚拟环境..."
-source venv/bin/activate
+echo "🔧 激活虚拟环境 ($VENV_DIR)..."
+source "$VENV_DIR/bin/activate"
 
 # 检查是否在虚拟环境中
 if [ -z "$VIRTUAL_ENV" ]; then

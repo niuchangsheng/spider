@@ -1,0 +1,20 @@
+# 覆盖率配置：排除难以单测的爬虫主流程与测试代码
+[run]
+branch = false
+source = .
+omit =
+    tests/*
+    */test_*
+    spider.py
+    spiders/bbs_spider.py
+    spiders/dynamic_news_spider.py
+    spiders/base.py
+
+[report]
+omit =
+    tests/*
+    */test_*
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError

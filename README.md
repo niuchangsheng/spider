@@ -2,20 +2,26 @@
 
 一个功能完善的BBS论坛图片爬虫系统，支持自动化爬取、图片去重、智能选择器检测等功能。
 
-**项目状态**: 🟢 正常运行 | **最后更新**: 2026-02-06 | **架构**: v2.3 文件结构重构 ⭐
+**项目状态**: 🟢 正常运行 | **最后更新**: 2026-02-07 | **架构**: v2.4 CLI 精简 ⭐
 
 ---
 
-## 🆕 架构升级 (v2.3) 🎉
+## 🆕 架构升级 (v2.4) 🎉
 
-> **新功能**: 文件结构重构，代码按层级组织，更易维护！
+> **新功能**: CLI 精简为 crawl / crawl-bbs / crawl-news，新增 checkpoint-status！
 
-### v2.3 新特性 (2026-02-06)
+### v2.4 新特性 (2026-02-07)
+
+- ✅ **统一爬取** - `crawl --config NAME` 按配置爬取全部 urls（BBS/新闻由 config 决定）
+- ✅ **BBS 单目标** - `crawl-bbs "URL" --type thread|board` 爬取单帖或单板块，支持 --config / --auto-detect
+- ✅ **新闻单页** - `crawl-news "URL"` 爬取动态新闻单页；爬全量用 `crawl --config sxd`
+- ✅ **检查点** - `checkpoint-status --site DOMAIN [--board] [--clear]` 查看或清除检查点
+
+### v2.3 特性 (2026-02-06)
 
 - ✅ **文件结构重构** - 按层级组织代码（parsers/spiders/cli）
 - ✅ **代码模块化** - spider.py 精简为CLI入口，职责分离
 - ✅ **层级清晰** - core/parsers/spiders/cli 各司其职
-- ✅ **易于维护** - 代码结构更清晰，便于团队协作
 
 ### v2.2 特性 (2026-02-06)
 
@@ -27,8 +33,7 @@
 
 ### v2.1 特性 (2026-02-04)
 
-- ✅ **子命令模式** - `spider.py crawl-url/crawl-urls/crawl-board/crawl-boards`
-- ✅ **意图明确** - 命令名称直接表达功能，告别 `--mode 1/2`
+- ✅ **子命令模式** - 意图明确，告别 `--mode 1/2`
 - ✅ **参数清晰** - 互斥组、位置参数、职责分离
 - ✅ **符合直觉** - 类似 git/docker 的CLI设计，学习成本低
 
@@ -40,30 +45,22 @@
 - ✅ **工厂模式** - `SpiderFactory.create()` 统一创建
 - ✅ **代码精简** - 减少50%代码量，更易维护
 
-### CLI对比 (v2.3 文件结构重构)
+### CLI对比 (v2.4)
 
-| 功能 | v2.0 方式 | v2.1/v2.2/v2.3 方式 ⭐ |
+| 功能 | v2.0 方式 | v2.4 方式 ⭐ |
 |------|----------|-------------|
-| 爬取URL列表 | `spider.py --config xindong --mode 1` | `spider.py crawl-urls --config xindong` |
-| 爬取板块 | `spider.py --config xindong --mode 2` | `spider.py crawl-boards --config xindong` |
-| 爬取单个URL | `spider.py --url "..." --mode 1` | `spider.py crawl-url "..." --auto-detect` |
-| 爬取单个板块 | `spider.py --url "..." --mode 2` | `spider.py crawl-board "..." --config xindong` |
-| **动态新闻页面** 🆕 | N/A | `spider.py crawl-news "..." --download-images` |
+| 按配置爬取全部 | `spider.py --config xindong --mode 1/2` | `spider.py crawl --config xindong` |
+| 爬取单个帖子 | `spider.py --url "..." --mode 1` | `spider.py crawl-bbs "URL" --type thread --config xindong` |
+| 爬取单个板块 | `spider.py --url "..." --mode 2` | `spider.py crawl-bbs "URL" --type board --config xindong --max-pages 5` |
+| 自动检测论坛 | 无 | `spider.py crawl-bbs "URL" --type thread --auto-detect` |
+| 动态新闻页面 | N/A | `spider.py crawl-news "URL" --download-images` 或 `crawl --config sxd` |
+| 检查点状态 | N/A | `spider.py checkpoint-status --site DOMAIN [--clear]` |
 
-**v2.3 新增**:
-- ✅ **文件结构重构**: parsers/spiders/cli 按层级组织
-- ✅ **代码模块化**: spider.py 精简为CLI入口
-- ✅ **易于维护**: 代码结构更清晰，职责分离
-
-**v2.2 新增**:
-- ✅ **crawl-news**: 爬取动态加载的新闻/公告页面
-- ✅ **--download-images**: 下载文章详情中的图片
-- ✅ **原图提取**: 智能从srcset/data-src获取最高分辨率
-
-**v2.1 优势**:
-- ✅ **意图明确**: `crawl-url` vs `crawl-board` 一目了然
-- ✅ **参数清晰**: `--max-pages` 只在相关命令出现
-- ✅ **易于记忆**: 类似 `git commit`, `docker run` 的风格
+**v2.4**:
+- ✅ **crawl**: 按 config 爬取全部 urls（BBS 或新闻由 config 决定）
+- ✅ **crawl-bbs**: 单帖/单板块，`--type thread|board`，支持 --config / --auto-detect
+- ✅ **crawl-news**: 单页新闻；全量用 `crawl --config sxd`
+- ✅ **checkpoint-status**: 查看或清除检查点
 
 ### API对比
 
@@ -100,24 +97,23 @@ config = get_example_config("myforum")   # 自动加载 configs/myforum.json
 
 ### 快速迁移
 
-#### v2.0 → v2.1 迁移 (CLI命令)
+#### v2.0/v2.1 → v2.4 迁移 (CLI命令)
 
 ```bash
-# 步骤1: 更新命令行调用
-# 旧: spider.py --config xindong --mode 1
-# 新: spider.py crawl-urls --config xindong
+# 旧: spider.py --config xindong --mode 1 或 crawl-urls --config xindong
+# 新: spider.py crawl --config xindong
 
-# 旧: spider.py --config xindong --mode 2 --max-pages 5
-# 新: spider.py crawl-boards --config xindong --max-pages 5
+# 旧: spider.py --config xindong --mode 2 或 crawl-boards --config xindong
+# 新: spider.py crawl --config xindong
 
-# 旧: spider.py --url "..." --mode 1
-# 新: spider.py crawl-url "..." --auto-detect
+# 旧: spider.py crawl-url "URL" --auto-detect
+# 新: spider.py crawl-bbs "URL" --type thread --auto-detect
 
-# 步骤2: 更新自动化脚本（如 run_spider.sh）
-# 替换所有 --mode 参数为相应的子命令
+# 旧: spider.py crawl-board "URL" --config xindong --max-pages 5
+# 新: spider.py crawl-bbs "URL" --type board --config xindong --max-pages 5
 
-# 步骤3: Python API 保持不变 ✅
-# 编程接口完全兼容，无需修改代码
+# 更新自动化脚本（如 run_spider.sh）为上述命令
+# Python API 保持不变 ✅
 ```
 
 #### v1.x → v2.1 迁移 (Python API)
@@ -238,15 +234,15 @@ async with SpiderFactory.create(preset="myforum") as spider:
 ```bash
 cd /home/chang/spider
 
-# v2.3 命令（子命令模式 + 文件结构重构）
-./run_spider.sh crawl-urls --config xindong         # 爬取配置中的URLs
-./run_spider.sh crawl-boards --config xindong       # 爬取配置中的所有板块
-./run_spider.sh crawl-url "https://bbs.com/thread/123" --auto-detect  # 爬取单个URL
-./run_spider.sh crawl-board "https://bbs.com/forum?fid=21" --config xindong --max-pages 5  # 爬取板块
-
-# 🆕 v2.2 新增：动态新闻页面爬取
-./run_spider.sh crawl-news "https://sxd.xd.com/" --download-images  # 爬取动态新闻并下载图片
-./run_spider.sh crawl-news "https://sxd.xd.com/" --max-pages 5      # 限制爬取页数
+# v2.4 命令
+./run_spider.sh crawl --config xindong                    # 按配置爬取全部（BBS urls+板块）
+./run_spider.sh crawl --config xindong --max-pages 5      # 限制页数
+./run_spider.sh crawl --config sxd --download-images      # 新闻站爬取并下载图片
+./run_spider.sh crawl-bbs "https://bbs.xd.com/forum.php?mod=viewthread&tid=123" --type thread --config xindong
+./run_spider.sh crawl-bbs "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21" --type board --config xindong --max-pages 5
+./run_spider.sh crawl-bbs "https://bbs.xd.com/..." --type thread --auto-detect
+./run_spider.sh crawl-news "https://sxd.xd.com/" --download-images --max-pages 5
+./run_spider.sh checkpoint-status --site sxd.xd.com --board all
 ```
 
 自动脚本会：
@@ -290,23 +286,21 @@ pip install requests aiohttp beautifulsoup4 lxml Pillow loguru fake-useragent te
 #### 步骤3：运行爬虫
 
 ```bash
-# v2.3 子命令模式（推荐）✅
-python spider.py crawl-urls --config xindong                     # 爬取配置中的URLs
-python spider.py crawl-boards --config xindong                   # 爬取配置中的所有板块
-python spider.py crawl-url "https://bbs.com/thread/123" --auto-detect  # 爬取单个URL
-python spider.py crawl-board "https://bbs.com/forum?fid=21" --config xindong --max-pages 5
-
-# 🆕 v2.2 新增：动态新闻页面
-python spider.py crawl-news "https://sxd.xd.com/" --download-images  # 爬取并下载图片
-python spider.py crawl-news "https://sxd.xd.com/" --max-pages 10     # 限制页数
-
-# 使用论坛类型预设
-python spider.py crawl-url "https://discuz-forum.com/thread/123" --preset discuz
-python spider.py crawl-board "https://phpbb-forum.com/viewforum.php?f=10" --preset phpbb
+# v2.4 子命令（推荐）✅
+python spider.py crawl --config xindong                     # 按配置爬取全部
+python spider.py crawl --config xindong --max-pages 5       # 限制页数
+python spider.py crawl --config sxd --download-images       # 新闻站+下载图片
+python spider.py crawl-bbs "https://bbs.xd.com/forum.php?mod=viewthread&tid=123" --type thread --config xindong
+python spider.py crawl-bbs "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21" --type board --config xindong --max-pages 5
+python spider.py crawl-bbs "https://bbs.xd.com/..." --type thread --auto-detect
+python spider.py crawl-news "https://sxd.xd.com/" --download-images --max-pages 5
+python spider.py checkpoint-status --site sxd.xd.com --board all
 
 # 查看帮助
 python spider.py --help                    # 主帮助
-python spider.py crawl-news --help         # 动态页面帮助
+python spider.py crawl --help              # 统一爬取帮助
+python spider.py crawl-bbs --help          # BBS 单目标帮助
+python spider.py crawl-news --help        # 动态新闻帮助
 ```
 
 #### 步骤4：查看结果
@@ -350,20 +344,20 @@ deactivate
 - 论坛类型识别
 - 置信度评估
 
-### 快速使用 (v2.1)
+### 快速使用 (v2.4)
 
 ```bash
-# 方式1: 使用子命令自动检测（推荐）
-python spider.py crawl-url "https://your-forum.com/thread/123" --auto-detect
-python spider.py crawl-board "https://your-forum.com/board/1" --auto-detect
+# 方式1: 使用 crawl-bbs 自动检测（推荐）
+python spider.py crawl-bbs "https://your-forum.com/thread/123" --type thread --auto-detect
+python spider.py crawl-bbs "https://your-forum.com/board/1" --type board --auto-detect
 
 # 方式2: 在代码中使用
 from config import ConfigLoader
 config = await ConfigLoader.auto_detect_config("https://your-forum.com/board/1")
 
 # 示例：自动检测心动论坛
-python spider.py crawl-url "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145" --auto-detect
-python spider.py crawl-board "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21" --auto-detect --max-pages 10
+python spider.py crawl-bbs "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145" --type thread --auto-detect
+python spider.py crawl-bbs "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21" --type board --auto-detect --max-pages 10
 ```
 
 **检测结果示例**：
@@ -424,30 +418,27 @@ BBSConfig(
 - **论坛系统**: Discuz! X3.4
 - **主要板块**: 神仙道、仙境传说等游戏讨论区
 
-### 快速使用 (v2.1)
+### 快速使用 (v2.4)
 
 ```bash
-# 爬取配置中的URL列表
-python spider.py crawl-urls --config xindong
+# 按配置爬取全部（URL 列表 + 板块，由 config 决定）
+python spider.py crawl --config xindong
 
-# 爬取配置中的所有板块（默认：所有页）
-python spider.py crawl-boards --config xindong
-
-# 爬取配置中的所有板块（限制页数）
-python spider.py crawl-boards --config xindong --max-pages 5  # 只爬前5页
+# 限制页数
+python spider.py crawl --config xindong --max-pages 5
 
 # 爬取单个帖子
-python spider.py crawl-url "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145" --config xindong
+python spider.py crawl-bbs "https://bbs.xd.com/forum.php?mod=viewthread&tid=3479145" --type thread --config xindong
 
 # 爬取单个板块
-python spider.py crawl-board "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21" --config xindong --max-pages 10
+python spider.py crawl-bbs "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21" --type board --config xindong --max-pages 10
 ```
 
 **命令解释**:
-- `crawl-urls`: 批量爬取URL列表（并发）
-- `crawl-boards`: 批量爬取板块列表（并发，默认爬取所有页）
-- `crawl-url`: 爬取单个帖子URL
-- `crawl-board`: 爬取单个板块（可限制页数）
+- `crawl --config xindong`: 按 xindong 配置爬取全部 urls（帖子 URL + 板块）
+- `crawl-bbs "URL" --type thread`: 爬取单个帖子
+- `crawl-bbs "URL" --type board`: 爬取单个板块（可 --max-pages）
+- `crawl-bbs "URL" --type thread --auto-detect`: 自动检测论坛类型
 
 ### Discuz论坛特点
 
@@ -523,10 +514,10 @@ min_size = 30000     # 30KB以上
 ### 快速使用
 
 ```bash
-# 爬取神仙道官网公告（含图片下载）
-python spider.py crawl-news "https://sxd.xd.com/" --download-images
+# 按配置爬取全部（推荐）
+python spider.py crawl --config sxd --download-images
 
-# 限制爬取页数
+# 单页爬取
 python spider.py crawl-news "https://sxd.xd.com/" --download-images --max-pages 5
 
 # 仅爬取文章列表（不下载图片）
@@ -1271,14 +1262,11 @@ MIT License
 
 ---
 
-**项目版本**: v2.3 (文件结构重构)  
-**最后更新**: 2026-02-06  
+**项目版本**: v2.4 (CLI 精简)  
+**最后更新**: 2026-02-07  
 **维护状态**: 🟢 活跃维护
 
 **重要提示**: 
-- v2.3 文件结构重构，代码按层级组织（parsers/spiders/cli），更易维护
-- v2.2 新增动态新闻页面爬虫，支持Ajax分页和原图提取
-
-详见设计文档: 
-- `docs/designs/2026-02-06-file-structure-refactor.md` (v2.3)
-- `docs/designs/2026-02-05-dynamic-news-page-crawler.md` (v2.2)
+- v2.4 CLI 精简为 crawl / crawl-bbs / crawl-news，新增 checkpoint-status
+- v2.3 文件结构重构（parsers/spiders/cli）
+- v2.2 动态新闻页面爬虫，Ajax 分页与原图提取

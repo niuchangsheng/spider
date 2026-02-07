@@ -100,6 +100,29 @@ class TestSelectorDetector(unittest.TestCase):
         img3 = BeautifulSoup('<img src="icon.jpg" width="50" height="50" />', 'lxml').find('img')
         self.assertFalse(self.detector._is_content_image(img3))
 
+    def test_auto_detect_selectors(self):
+        """测试 auto_detect_selectors 完整流程"""
+        html = """
+        <html><head><meta name="generator" content="Discuz!" /></head>
+        <body>
+            <tbody id="normalthread_1"><tr><td><a href="/thread/1" class="s xst">帖1</a></td></tr></tbody>
+            <tbody id="normalthread_2"><tr><td><a href="/thread/2" class="xst">帖2</a></td></tr></tbody>
+            <div class="content"><img src="a.jpg" width="200" /><img src="b.jpg" /></div>
+            <a href="?page=2" class="nxt">下一页</a>
+        </body>
+        </html>
+        """
+        result = self.detector.auto_detect_selectors(html, "https://bbs.example.com/forum/1")
+        self.assertIn("forum_type", result)
+        self.assertIn("selectors", result)
+        self.assertIn("thread_list_selector", result["selectors"])
+        self.assertIn("thread_link_selector", result["selectors"])
+        self.assertIn("image_selector", result["selectors"])
+        self.assertIn("next_page_selector", result["selectors"])
+        self.assertIn("confidence", result)
+        self.assertIn("overall", result["confidence"])
+        self.assertIn(result["status"], ("success", "uncertain"))
+
 
 if __name__ == '__main__':
     unittest.main()

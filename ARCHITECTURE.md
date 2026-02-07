@@ -1,9 +1,9 @@
 # 系统架构设计文档
 
 **项目名称**: BBS图片爬虫系统  
-**版本**: v2.3  
+**版本**: v2.4  
 **架构师**: Chang  
-**最后更新**: 2026-02-06  
+**最后更新**: 2026-02-07  
 **状态**: 🟢 已发布
 
 ---
@@ -28,6 +28,7 @@
 | v2.1 | 2026-02-04 | Chang | CLI重构：子命令模式（重大升级） |
 | v2.2 | 2026-02-06 | Chang | 新增动态新闻页面爬虫，支持Ajax分页 |
 | v2.3 | 2026-02-06 | Chang | 文件结构重构：按层级组织代码（parsers/spiders/cli） |
+| v2.4 | 2026-02-07 | Chang | CLI 精简：crawl / crawl-bbs / crawl-news，新增 checkpoint-status |
 
 ---
 
@@ -705,37 +706,35 @@ class Downloader(ABC):
 
 ### 5.2 外部接口
 
-#### CLI接口 (v2.1 子命令模式)
+#### CLI接口 (v2.4 子命令模式)
 
 ```bash
 # 基础用法
 spider.py <subcommand> [options]
 
 # 子命令
-crawl-url       爬取单个URL (BBS帖子)
-crawl-urls      爬取配置中的URL列表
-crawl-board     爬取单个板块
-crawl-boards    爬取配置中的所有板块
-crawl-news      爬取动态新闻/公告页面 🆕
+crawl              按 config 爬取全部 urls（BBS/新闻由 config 决定，需 --config）
+crawl-bbs          BBS：单帖或单板块（位置参数 URL + --type thread|board，--config 或 --auto-detect）
+crawl-news         动态新闻单页（位置参数 URL；爬全量用 crawl --config sxd）
+checkpoint-status  查看/清除检查点（--site 必填，--board，--clear）
 
-# 配置选项（互斥组）
---config NAME           使用配置文件 (configs/NAME.json)
---preset TYPE           使用论坛类型预设 (discuz/phpbb/vbulletin)
---auto-detect           自动检测论坛类型
-
-# 其他选项
---max-pages N           板块最大页数（默认：不限制）
+# 常用选项
+--config NAME           配置文件 (configs/NAME.json)，crawl 必填
+--auto-detect           crawl-bbs 时从 URL 自动检测论坛类型
+--type thread|board     crawl-bbs 时指定目标类型
+--max-pages N           最大页数（板块/新闻列表）
+--download-images       crawl/crawl-news 时下载文章中的图片
+--resume / --no-resume  是否从检查点恢复
 
 # 示例
-spider.py crawl-url "https://bbs.com/thread/123" --auto-detect
-spider.py crawl-urls --config xindong
-spider.py crawl-board "https://bbs.com/forum?fid=21" --config xindong --max-pages 5
-spider.py crawl-boards --config xindong
-spider.py crawl-news "https://sxd.xd.com/" --download-images --max-pages 10  # 🆕
-
-# 环境变量（向后兼容）
-CONFIG                论坛配置名
-MODE                  处理模式（已废弃，建议使用子命令）
+spider.py crawl --config xindong --max-pages 5
+spider.py crawl --config sxd --download-images
+spider.py crawl-bbs "https://bbs.xd.com/forum.php?mod=viewthread&tid=123" --type thread --config xindong
+spider.py crawl-bbs "https://bbs.xd.com/forum.php?mod=forumdisplay&fid=21" --type board --config xindong --max-pages 5
+spider.py crawl-bbs "https://bbs.xd.com/forum.php?mod=viewthread&tid=123" --type thread --auto-detect
+spider.py crawl-news "https://sxd.xd.com/" --config sxd --download-images --max-pages 5
+spider.py checkpoint-status --site sxd.xd.com --board all
+spider.py checkpoint-status --site bbs.xd.com --board 神仙道玩家交流 --clear
 ```
 
 #### Python API (v2.1 统一架构)

@@ -9,20 +9,30 @@
 ```
 tests/
 ├── __init__.py
-├── run_tests.py          # 测试运行脚本
-├── run_tests.sh          # Shell 测试脚本（自动激活虚拟环境）
+├── run_tests.sh          # Shell 测试脚本（支持 .venv/venv）
 ├── README.md             # 本文件
+├── test_config.py        # config 加载、get_example_config、ConfigLoader 等
 ├── core/                 # core 模块测试
 │   ├── __init__.py
-│   ├── test_checkpoint.py    # CheckpointManager 测试
-│   └── test_crawl_queue.py   # CrawlQueue 测试
-├── detector/            # detector 模块测试
+│   ├── test_checkpoint.py    # CheckpointManager
+│   ├── test_crawl_queue.py   # CrawlQueue / AdaptiveCrawlQueue
+│   ├── test_deduplicator.py  # ImageDeduplicator
+│   ├── test_downloader.py   # ImageDownloader（mock）
+│   └── test_storage.py      # Storage（临时 SQLite）
+├── detector/
 │   ├── __init__.py
-│   └── test_selector_detector.py  # SelectorDetector 测试
-├── parsers/             # parsers 模块测试（待添加）
-│   └── __init__.py
-└── spiders/             # spiders 模块测试（待添加）
-    └── __init__.py
+│   └── test_selector_detector.py  # SelectorDetector / auto_detect_selectors
+├── parsers/
+│   ├── __init__.py
+│   ├── test_bbs_parser.py       # BBSParser
+│   └── test_dynamic_parser.py  # DynamicPageParser
+├── spiders/
+│   ├── __init__.py
+│   └── test_spider_factory.py  # SpiderFactory
+└── cli/
+    ├── __init__.py
+    ├── test_commands.py   # create_parser / 子命令解析
+    └── test_handlers.py   # handle_checkpoint_status
 ```
 
 ## 🚀 运行测试
@@ -47,11 +57,14 @@ tests/
 ### 方法2: 使用 unittest 自动发现（推荐）
 
 ```bash
-# 激活虚拟环境
-source venv/bin/activate
+# 激活虚拟环境（优先 .venv）
+source .venv/bin/activate   # 或 source venv/bin/activate
+
+# 必须设置 PYTHONPATH，否则 tests.cli / tests.parsers 等无法正确加载
+export PYTHONPATH=.
 
 # 运行所有测试（自动发现所有 test_*.py 文件）
-python -m unittest discover -s tests -p "test_*.py" -v
+python -m unittest discover -s tests -p "test_*.py" -t . -v
 
 # 退出虚拟环境
 deactivate
@@ -171,18 +184,19 @@ class TestSomeClass(unittest.TestCase):
 
 ### 手动运行覆盖率检查
 
-如果需要手动控制，也可以使用以下命令：
+项目根目录有 `.coveragerc`，会排除 `tests/*`、`spider.py` 及难以单测的爬虫主流程（bbs_spider、dynamic_news_spider、base）。目标：**覆盖率 90%+**（当前约 61%，持续补充 UT 提升）。
 
 ```bash
-source venv/bin/activate
+source .venv/bin/activate
+export PYTHONPATH=.
 
-# 安装 coverage（如果未安装）
+# 安装 coverage（若未安装）
 pip install coverage
 
-# 运行测试并生成覆盖率报告
-coverage run -m unittest discover -s tests -p "test_*.py" -v
-coverage report --show-missing  # 文本格式
-coverage html  # 生成 HTML 报告到 htmlcov/ 目录
+# 使用项目 .coveragerc 运行测试并收集覆盖率
+coverage run -m unittest discover -s tests -p "test_*.py" -t .
+coverage report -m    # 文本格式（含缺失行）
+coverage html         # 生成 htmlcov/index.html
 ```
 
 ## ⚠️ 注意事项
@@ -194,14 +208,14 @@ coverage html  # 生成 HTML 报告到 htmlcov/ 目录
 
 ## 🔧 故障排除
 
-### 问题: ModuleNotFoundError
+### 问题: ModuleNotFoundError 或 tests.cli / tests.parsers 未发现
 
-**解决方案**: 确保在虚拟环境下运行，并且项目根目录在 Python 路径中
+**解决方案**: 必须设置 `PYTHONPATH=.`，并从项目根目录运行 discover（`-t .`）：
 
 ```bash
-source venv/bin/activate
-export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-python -m unittest discover -s tests -p "test_*.py" -v
+source .venv/bin/activate
+export PYTHONPATH=.
+python -m unittest discover -s tests -p "test_*.py" -t . -v
 ```
 
 ### 问题: 测试失败但代码正常
