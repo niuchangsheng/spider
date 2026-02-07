@@ -125,14 +125,14 @@ class Config(BaseModel):
     image: ImageConfig = Field(default_factory=ImageConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     log: LogConfig = Field(default_factory=LogConfig)
-    # 爬取目标：统一字段 urls。BBS 下用 type 区分：{ "type": "board", "name", "url" }=板块，字符串=网页
+    # 爬取目标：统一字段 urls。BBS 下用 type 区分：board=板块，thread=单帖(可带 name)，字符串=网页
     urls: List[Union[str, Dict[str, Any]]] = Field(
         default_factory=list,
-        description="统一 URL 列表：news 为字符串列表；bbs 为字符串(网页)与 {type:board, name, url}(板块) 混合",
+        description="统一 URL 列表：news 为字符串；bbs 为字符串 / {type:board, name, url} / {type:thread, name, url}",
     )
 
     def get_boards(self) -> List[Dict[str, str]]:
-        """从 urls 中解析出 BBS 板块列表（仅 crawler_type=bbs 时有意义）"""
+        """从 urls 中解析出 BBS 板块列表（仅 type=board）"""
         return [
             {"name": x["name"], "url": x["url"]}
             for x in self.urls
@@ -140,13 +140,17 @@ class Config(BaseModel):
         ]
 
     def get_page_urls(self) -> List[str]:
-        """从 urls 中解析出网页 URL 列表：BBS=帖子 URL，news=新闻入口 URL"""
-        out: List[str] = []
+        """从 urls 中解析出网页 URL 列表：BBS=帖子 URL（含 type=thread），news=新闻入口 URL"""
+        return [e["url"] for e in self.get_page_entries()]
+
+    def get_page_entries(self) -> List[Dict[str, Optional[str]]]:
+        """从 urls 中解析出网页条目：每项 {url, name?}，type=thread 时保留 name 作标题"""
+        out: List[Dict[str, Optional[str]]] = []
         for x in self.urls:
             if isinstance(x, str):
-                out.append(x)
+                out.append({"url": x, "name": None})
             elif isinstance(x, dict) and x.get("type") != "board" and x.get("url"):
-                out.append(x["url"])
+                out.append({"url": x["url"], "name": x.get("name")})
         return out
 
     def __init__(self, **data):

@@ -13,21 +13,20 @@ from core.checkpoint import CheckpointManager
 
 
 async def handle_crawl_bbs(args):
-    """BBS：爬取单个帖子(--url)或单个板块(--board)；--url/--board 替换 config 内 urls"""
-    if not getattr(args, 'url', None) and not getattr(args, 'board', None):
-        logger.error("❌ crawl-bbs 必须指定 --url 或 --board；爬取 config 内全部请用 crawl --config xindong")
-        return
-    if getattr(args, 'url', None) and getattr(args, 'board', None):
-        logger.error("❌ crawl-bbs 只能指定 --url 或 --board 其一")
-        return
-
-    if not args.config:
-        logger.error("❌ crawl-bbs 请指定 --config 以提供 BBS 配置")
-        return
-
-    config = get_example_config(args.config)
+    """BBS：爬取单个帖子或板块，位置参数为 target，--type thread|board 区分；支持 --auto-detect"""
+    if getattr(args, 'auto_detect', False):
+        if args.config:
+            logger.error("❌ crawl-bbs 请只指定 --config 或 --auto-detect 其一")
+            return
+        logger.info(f"🌐 自动检测配置: {args.target}")
+        config = ConfigLoader.auto_detect(args.target)
+    else:
+        if not args.config:
+            logger.error("❌ crawl-bbs 请指定 --config 或 --auto-detect")
+            return
+        config = get_example_config(args.config)
     if config.crawler_type != "bbs":
-        logger.error(f"❌ 配置 {args.config} 的 crawler_type 不是 bbs")
+        logger.error(f"❌ 配置的 crawler_type 不是 bbs")
         return
 
     if getattr(args, 'max_workers', None):
@@ -39,22 +38,21 @@ async def handle_crawl_bbs(args):
 
     spider = SpiderFactory.create(config=config)
     async with spider:
-        if args.url:
+        if args.type == "thread":
             print(f"\n📌 命令: crawl-bbs 单帖")
-            print(f"URL: {args.url}")
-            thread_id = spider.parser._extract_thread_id(args.url)
-            thread_info = {
-                'url': args.url,
+            print(f"URL: {args.target}")
+            thread_id = spider.parser._extract_thread_id(args.target)
+            await spider.crawl_thread({
+                'url': args.target,
                 'thread_id': thread_id,
                 'title': f'Thread-{thread_id}',
                 'board': config.bbs.name,
-            }
-            await spider.crawl_thread(thread_info)
+            })
         else:
             print(f"\n📌 命令: crawl-bbs 单板块")
-            print(f"板块URL: {args.board}")
+            print(f"板块URL: {args.target}")
             await spider.crawl_board(
-                board_url=args.board,
+                board_url=args.target,
                 board_name=config.bbs.name,
                 max_pages=getattr(args, 'max_pages', None),
                 resume=getattr(args, 'resume', True),
@@ -64,16 +62,10 @@ async def handle_crawl_bbs(args):
 
 
 async def handle_crawl_news(args):
-    """爬取动态新闻（必须指定 URL；爬全量请用 crawl --config sxd）"""
-    # URL 来自 positional 或 --url
-    news_url = getattr(args, 'url', None) or getattr(args, 'news_url', None)
-    if not news_url:
-        logger.error("❌ crawl-news 必须指定 URL（位置参数或 --url）；爬取配置内全部请用 crawl --config sxd")
-        return
-
-    news_urls = [news_url]
+    """爬取动态新闻单页（必须传 URL）；爬全量用 crawl --config sxd"""
+    news_urls = [args.url]
     print(f"\n📌 命令: 爬取动态新闻页面")
-    print(f"URL: {news_url}")
+    print(f"URL: {args.url}")
     print(f"方式: {args.method}")
     if args.max_pages:
         print(f"最大页数: {args.max_pages}")
@@ -92,12 +84,12 @@ async def handle_crawl_news(args):
         logger.info(f"📁 使用配置文件: {args.config}")
         config = get_example_config(args.config)
     else:
-        parsed = urlparse(news_url)
+        parsed = urlparse(args.url)
         base_url = f"{parsed.scheme}://{parsed.netloc}"
         config = Config(
             bbs={"name": "动态新闻网站", "base_url": base_url, "forum_type": "custom"}
         )
-    
+
     # 应用队列相关配置
     if hasattr(args, 'max_workers') and args.max_workers:
         config.crawler.max_concurrent_requests = args.max_workers
@@ -147,98 +139,8 @@ def print_statistics(spider):
 
 
 async def handle_crawl(args):
-    """统一爬取：--config 全量；--url/--board 单目标（可 --auto-detect）；由 config 决定 BBS/新闻"""
-    single_url = getattr(args, 'url', None)
-    single_board = getattr(args, 'board', None)
-    auto_detect = getattr(args, 'auto_detect', False)
-    config_name = getattr(args, 'config', None)
-
-    # 单目标模式：--url 或 --board
-    if single_url or single_board:
-        if single_url and single_board:
-            logger.error("❌ 只能指定 --url 或 --board 其一")
-            return
-        if single_board:
-            if not config_name:
-                logger.error("❌ crawl --board 需配合 --config")
-                return
-            config = get_example_config(config_name)
-            if config.crawler_type != "bbs":
-                logger.error(f"❌ 配置 {config_name} 的 crawler_type 不是 bbs")
-                return
-            if getattr(args, 'max_workers', None):
-                config.crawler.max_concurrent_requests = args.max_workers
-            if getattr(args, 'use_adaptive_queue', None) is not None:
-                config.crawler.use_adaptive_queue = args.use_adaptive_queue
-            if getattr(args, 'use_async_queue', None) is not None:
-                config.crawler.use_async_queue = args.use_async_queue
-            spider = SpiderFactory.create(config=config)
-            async with spider:
-                await spider.crawl_board(
-                    board_url=single_board,
-                    board_name=config.bbs.name,
-                    max_pages=getattr(args, 'max_pages', None),
-                    resume=getattr(args, 'resume', True),
-                    start_page=getattr(args, 'start_page', None),
-                )
-            print_statistics(spider)
-            return
-        # single_url
-        if auto_detect:
-            config = ConfigLoader.auto_detect(single_url)
-            spider = SpiderFactory.create(config=config)
-            async with spider:
-                thread_id = spider.parser._extract_thread_id(single_url)
-                await spider.crawl_thread({
-                    'url': single_url,
-                    'thread_id': thread_id,
-                    'title': f'Thread-{thread_id}',
-                    'board': config.bbs.name,
-                })
-            print_statistics(spider)
-            return
-        if not config_name:
-            logger.error("❌ crawl --url 请指定 --config 或 --auto-detect")
-            return
-        config = get_example_config(config_name)
-        if getattr(args, 'max_workers', None):
-            config.crawler.max_concurrent_requests = args.max_workers
-        if getattr(args, 'use_adaptive_queue', None) is not None:
-            config.crawler.use_adaptive_queue = args.use_adaptive_queue
-        if getattr(args, 'use_async_queue', None) is not None:
-            config.crawler.use_async_queue = args.use_async_queue
-        if config.crawler_type == "news":
-            crawler = DynamicNewsCrawler(config)
-            async with crawler:
-                a, i = await crawler.crawl_news_and_download_images(
-                    single_url,
-                    max_pages=getattr(args, 'max_pages', None),
-                    resume=getattr(args, 'resume', True),
-                    start_page=getattr(args, 'start_page', None),
-                    download_images=getattr(args, 'download_images', False),
-                    method=getattr(args, 'method', 'ajax'),
-                )
-            stats = crawler.get_statistics()
-            print("\n" + "=" * 60)
-            print("📊 爬取统计: 发现文章", a, "下载图片", i)
-            print("=" * 60)
-        else:
-            spider = SpiderFactory.create(config=config)
-            async with spider:
-                thread_id = spider.parser._extract_thread_id(single_url)
-                await spider.crawl_thread({
-                    'url': single_url,
-                    'thread_id': thread_id,
-                    'title': f'Thread-{thread_id}',
-                    'board': config.bbs.name,
-                })
-            print_statistics(spider)
-        return
-
-    # 全量模式：必须 --config
-    if not config_name:
-        logger.error("❌ crawl 请指定 --config（爬全量）或 --url/--board（爬单目标）")
-        return
+    """统一爬取：仅 --config 全量，由 config 决定 BBS/新闻"""
+    config_name = args.config
     config = get_example_config(config_name)
     if getattr(args, 'max_workers', None):
         config.crawler.max_concurrent_requests = args.max_workers
@@ -283,11 +185,11 @@ async def handle_crawl(args):
     # BBS：爬取配置中的板块 + 帖子 URL
     print(f"\n📌 命令: 爬取（由 config 决定）— 类型: BBS (crawler_type=bbs)")
     boards_info = config.get_boards() or get_forum_boards(config_name)
-    urls = config.get_page_urls() or get_forum_urls(config_name)
-    if not boards_info and not urls:
+    page_entries = config.get_page_entries() or [{"url": u, "name": None} for u in get_forum_urls(config_name)]
+    if not boards_info and not page_entries:
         logger.error("❌ 配置中既无 boards 也无 urls")
         return
-    logger.info(f"📁 配置: {config_name}，板块: {len(boards_info)}，帖子 URL: {len(urls)}")
+    logger.info(f"📁 配置: {config_name}，板块: {len(boards_info)}，帖子 URL: {len(page_entries)}")
     spider = SpiderFactory.create(config=config)
     async with spider:
         tasks = []
@@ -299,12 +201,14 @@ async def handle_crawl(args):
                 resume=getattr(args, 'resume', True),
                 start_page=getattr(args, 'start_page', None),
             ))
-        for url in urls:
+        for entry in page_entries:
+            url = entry["url"]
             thread_id = spider.parser._extract_thread_id(url)
+            title = entry.get("name") or f"Thread-{thread_id}"
             tasks.append(spider.crawl_thread({
                 "url": url,
                 "thread_id": thread_id,
-                "title": f"Thread-{thread_id}",
+                "title": title,
                 "board": config.bbs.name,
             }))
         if tasks:
