@@ -33,21 +33,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 优先 .venv，其次 venv
-VENV_DIR=
-if [ -d ".venv" ]; then
-    VENV_DIR=".venv"
-elif [ -d "venv" ]; then
-    VENV_DIR="venv"
-fi
-if [ -z "$VENV_DIR" ]; then
-    echo "❌ 错误: 未找到虚拟环境 .venv/ 或 venv/"
-    echo "请先创建: python3 -m venv .venv"
-    exit 1
+# 检查 venv，不存在则创建
+if [ ! -d "venv" ]; then
+    echo "⚠️  venv 不存在，正在创建..."
+    if ! python3 -m venv --help &>/dev/null; then
+        echo "❌ 请先安装: sudo apt install python3.12-venv"
+        exit 1
+    fi
+    python3 -m venv venv
+    echo "✓ 已创建 venv"
 fi
 
-echo "🔧 激活虚拟环境 ($VENV_DIR)..."
-source "$VENV_DIR/bin/activate"
+echo "🔧 激活虚拟环境..."
+source venv/bin/activate
 
 # 检查是否在虚拟环境中
 if [ -z "$VIRTUAL_ENV" ]; then
@@ -57,6 +55,14 @@ fi
 
 echo "✅ 虚拟环境已激活: $VIRTUAL_ENV"
 echo ""
+
+# 若缺少依赖则安装（便于刚创建 venv 后直接跑测试）
+if ! python -c "import pydantic" 2>/dev/null; then
+    echo "📦 安装依赖..."
+    pip install -q -r requirements.txt
+    echo "✓ 依赖安装完成"
+    echo ""
+fi
 
 # 如果启用覆盖率，检查并安装 coverage
 if [ "$GENERATE_COVERAGE" = true ]; then
