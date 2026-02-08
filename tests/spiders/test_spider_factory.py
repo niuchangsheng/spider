@@ -2,6 +2,8 @@
 SpiderFactory 单元测试
 """
 import unittest
+from unittest.mock import patch
+
 from config import get_example_config
 from spiders.spider_factory import SpiderFactory
 from spiders.bbs_spider import BBSSpider, DiscuzSpider
@@ -31,6 +33,14 @@ class TestSpiderFactoryCreateWithConfig(unittest.TestCase):
             SpiderFactory.create()
         self.assertIn("必须提供", str(ctx.exception))
 
+    def test_create_with_url_auto_detect(self):
+        """create(url=...) 调用 ConfigLoader.auto_detect"""
+        cfg = get_example_config("xindong")
+        with patch("spiders.spider_factory.ConfigLoader.auto_detect", return_value=cfg):
+            spider = SpiderFactory.create(url="https://bbs.xd.com/")
+        self.assertIsInstance(spider, BBSSpider)
+        self.assertEqual(spider.config.bbs.name, "心动论坛")
+
 
 class TestSpiderFactoryCreateDynamic(unittest.TestCase):
     def test_create_dynamic_with_config(self):
@@ -42,3 +52,21 @@ class TestSpiderFactoryCreateDynamic(unittest.TestCase):
         cfg = get_example_config("sxd")
         spider = SpiderFactory.create_dynamic(config=cfg)
         self.assertIsInstance(spider, DynamicNewsCrawler)
+
+
+class TestSpiderFactoryRegister(unittest.TestCase):
+    """SpiderFactory.register 测试"""
+
+    def test_register_and_create_custom_forum_type(self):
+        """注册自定义 forum_type 后 create 可返回该类型"""
+        from config import create_config_from_dict
+        custom_cfg = create_config_from_dict({
+            "name": "Custom",
+            "forum_type": "discuz",
+            "base_url": "https://custom.com",
+            "selectors": {},
+            "urls": [],
+        })
+        SpiderFactory.register("discuz", DiscuzSpider)
+        spider = SpiderFactory.create(config=custom_cfg)
+        self.assertIsInstance(spider, DiscuzSpider)

@@ -176,6 +176,39 @@ class TestImageDownloaderBatchAndStats(unittest.TestCase):
 
         asyncio.run(run())
 
+    @patch("core.downloader.aiohttp.ClientSession")
+    def test_download_batch_two_urls_hits_delay_path(self, mock_session_cls):
+        """download_batch 多 URL 时走 delay 与 gather 路径"""
+        png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+        resp = MagicMock()
+        resp.status = 200
+        resp.read = AsyncMock(return_value=png_bytes)
+        resp.__aenter__ = AsyncMock(return_value=resp)
+        resp.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.get.return_value = resp
+
+        async def run():
+            d = ImageDownloader()
+            d.session = mock_session
+            save_dir = Path("/tmp/coverage_batch_two")
+            save_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                results = await d.download_batch(
+                    ["https://example.com/a.png", "https://example.com/b.png"],
+                    save_dir,
+                    metadata=None,
+                )
+                self.assertIsInstance(results, list)
+                self.assertEqual(len(results), 2)
+            finally:
+                for f in save_dir.glob("*"):
+                    f.unlink(missing_ok=True)
+                if save_dir.exists():
+                    save_dir.rmdir()
+
+        asyncio.run(run())
+
 
 class TestImageDownloaderContextManager(unittest.TestCase):
     """__aenter__ / __aexit__ 测试"""
@@ -192,3 +225,22 @@ class TestImageDownloaderContextManager(unittest.TestCase):
             mock_session.close.assert_called_once()
 
         asyncio.run(run())
+
+
+class TestImageDownloaderGenerateFilename(unittest.TestCase):
+    """_generate_filename 覆盖 ext/convert_to_jpg/metadata 分支"""
+
+    def test_generate_filename_ext_not_allowed_uses_jpg(self):
+        """URL 扩展名不在 allowed_formats 时用 jpg"""
+        d = ImageDownloader()
+        name = d._generate_filename("https://example.com/photo.xyz", 1, {"board": "b1", "thread_id": "t1"})
+        self.assertIn(".jpg", name)
+        self.assertIn("b1", name)
+        self.assertIn("t1", name)
+
+    def test_generate_filename_no_metadata(self):
+        """无 metadata 时使用 image_xxx 格式"""
+        d = ImageDownloader()
+        name = d._generate_filename("https://example.com/a.png", 1, None)
+        self.assertIn("image_", name)
+        self.assertIn(".png", name)

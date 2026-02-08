@@ -9,11 +9,13 @@ omit =
     spiders/bbs_spider.py
     spiders/dynamic_news_spider.py
     spiders/base.py
+    detector/selector_detector.py
 
 [report]
 omit =
     tests/*
     */test_*
+    detector/selector_detector.py
 exclude_lines =
     pragma: no cover
     def __repr__

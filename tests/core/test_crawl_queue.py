@@ -169,6 +169,20 @@ class TestAdaptiveCrawlQueue(unittest.TestCase):
         self.assertIn('error_rate', stats)
         self.assertIn('adjustments', stats)
 
+    async def async_test_adaptive_run(self):
+        """AdaptiveCrawlQueue.run 覆盖父类 run 及调整逻辑"""
+        results = []
+        async def worker_func(item):
+            results.append(item)
+            await asyncio.sleep(0.01)
+        items = [1, 2, 3]
+        stats = await self.queue.run(items, worker_func, show_progress=False)
+        self.assertEqual(stats['completed_tasks'], 3)
+        self.assertEqual(len(results), 3)
+
+    def test_adaptive_run(self):
+        asyncio.run(self.async_test_adaptive_run())
+
 
 if __name__ == '__main__':
     unittest.main()

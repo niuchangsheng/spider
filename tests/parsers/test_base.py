@@ -59,6 +59,21 @@ class TestBaseParserImageHelpers(unittest.TestCase):
         parser = BBSParser()
         self.assertFalse(parser._is_valid_image_url("not-a-url"))
 
+    def test_is_valid_image_url_false_no_extension_no_keyword(self):
+        """无扩展名且无关键词时返回 False"""
+        parser = BBSParser()
+        self.assertFalse(parser._is_valid_image_url("https://cdn.com/page"))
+
+    def test_is_valid_image_url_invalid_input_returns_false(self):
+        """无效输入（如 None）导致 urlparse 异常时返回 False"""
+        parser = BBSParser()
+        self.assertFalse(parser._is_valid_image_url(None))
+
+    def test_is_valid_image_url_non_string_causes_exception_returns_false(self):
+        """非字符串（如 int）导致 urlparse 异常时返回 False"""
+        parser = BBSParser()
+        self.assertFalse(parser._is_valid_image_url(123))
+
     def test_extract_images_from_soup(self):
         parser = BBSParser()
         html = """

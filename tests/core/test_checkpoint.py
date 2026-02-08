@@ -5,10 +5,11 @@ import unittest
 import tempfile
 import shutil
 from pathlib import Path
+from unittest import mock as unittest_mock
 
 from config import config
 from core.storage import storage
-from core.checkpoint import CheckpointManager
+from core.checkpoint import CheckpointManager, get_checkpoint_manager
 
 
 class TestCheckpointManager(unittest.TestCase):
@@ -56,6 +57,22 @@ class TestCheckpointManager(unittest.TestCase):
         self.assertEqual(data["status"], "running")
         self.assertEqual(data["stats"]["crawled_count"], 100)
 
+    def test_save_checkpoint_with_existing_uses_old_created_at(self):
+        """已有检查点时再次 save 使用原 created_at（覆盖 69-70）"""
+        self.checkpoint.save_checkpoint(current_page=1, status="running")
+        first = self.checkpoint.load_checkpoint()
+        created_first = first.get("created_at")
+        self.checkpoint.save_checkpoint(current_page=2, status="running")
+        second = self.checkpoint.load_checkpoint()
+        self.assertEqual(second["created_at"], created_first)
+        self.assertEqual(second["current_page"], 2)
+
+    def test_save_checkpoint_storage_raises_returns_false(self):
+        """storage.save_checkpoint 异常时返回 False（覆盖 78-80 except）"""
+        with unittest_mock.patch.object(storage, "save_checkpoint", side_effect=Exception("db error")):
+            result = self.checkpoint.save_checkpoint(current_page=1, status="running")
+        self.assertFalse(result)
+
     def test_save_checkpoint_with_article_ids(self):
         """测试保存包含 article_id 的检查点"""
         result = self.checkpoint.save_checkpoint(
@@ -80,6 +97,13 @@ class TestCheckpointManager(unittest.TestCase):
         seen_ids = self.checkpoint.get_seen_article_ids()
         self.assertEqual(seen_ids, {"1001", "1002", "1003"})
 
+    def test_get_seen_article_ids_non_list_returns_empty_set(self):
+        """seen_article_ids 非 list 时返回空 set"""
+        self.checkpoint.save_checkpoint(current_page=1, seen_article_ids=["a"])
+        with unittest_mock.patch.object(storage, "load_checkpoint", return_value={"seen_article_ids": {"k": 1}, "current_page": 1}):
+            seen = self.checkpoint.get_seen_article_ids()
+        self.assertEqual(seen, set())
+
     def test_get_min_max_article_id(self):
         """测试获取最小/最大文章ID"""
         self.checkpoint.save_checkpoint(
@@ -89,6 +113,11 @@ class TestCheckpointManager(unittest.TestCase):
         )
         self.assertEqual(self.checkpoint.get_min_article_id(), "1001")
         self.assertEqual(self.checkpoint.get_max_article_id(), "1003")
+
+    def test_get_max_article_id_none_when_no_checkpoint(self):
+        """无检查点时 get_max_article_id 返回 None"""
+        cp = CheckpointManager(site="nomax.com", board="b1")
+        self.assertIsNone(cp.get_max_article_id())
 
     def test_mark_completed(self):
         """测试标记完成"""
@@ -102,6 +131,12 @@ class TestCheckpointManager(unittest.TestCase):
         self.assertEqual(data["status"], "completed")
         self.assertEqual(data["stats"]["total"], 100)
 
+    def test_mark_completed_when_no_checkpoint_returns_false(self):
+        """无检查点时 mark_completed 返回 False"""
+        cp = CheckpointManager(site="nonexistent.com", board="b1")
+        result = cp.mark_completed()
+        self.assertFalse(result)
+
     def test_mark_error(self):
         """测试标记错误"""
         self.checkpoint.save_checkpoint(
@@ -114,11 +149,29 @@ class TestCheckpointManager(unittest.TestCase):
         self.assertEqual(data["status"], "error")
         self.assertIn("last_error", data["stats"])
 
+    def test_mark_error_when_no_checkpoint_returns_false(self):
+        """无检查点时 mark_error 返回 False"""
+        cp = CheckpointManager(site="nonexistent2.com", board="b1")
+        result = cp.mark_error("err")
+        self.assertFalse(result)
+
     def test_get_current_page(self):
         """测试获取当前页"""
         self.assertEqual(self.checkpoint.get_current_page(), 1)
         self.checkpoint.save_checkpoint(current_page=5)
         self.assertEqual(self.checkpoint.get_current_page(), 5)
+
+    def test_get_current_page_returns_one_when_no_data(self):
+        """无检查点时 get_current_page 返回 1"""
+        cp = CheckpointManager(site="nodata.com", board="b1")
+        self.assertEqual(cp.get_current_page(), 1)
+
+    def test_load_checkpoint_silent_does_not_log(self):
+        """load_checkpoint(silent=True) 不打印 Checkpoint loaded"""
+        self.checkpoint.save_checkpoint(current_page=2)
+        data = self.checkpoint.load_checkpoint(silent=True)
+        self.assertIsNotNone(data)
+        self.assertEqual(data["current_page"], 2)
 
     def test_get_status(self):
         """测试获取状态"""
@@ -138,6 +191,13 @@ class TestCheckpointManager(unittest.TestCase):
         self.assertFalse(self.checkpoint.exists())
         self.checkpoint.save_checkpoint(current_page=1)
         self.assertTrue(self.checkpoint.exists())
+
+    def test_get_checkpoint_manager(self):
+        """get_checkpoint_manager 返回 CheckpointManager 实例"""
+        cp = get_checkpoint_manager("example.com", "b1")
+        self.assertIsInstance(cp, CheckpointManager)
+        self.assertEqual(cp.site, "example.com")
+        self.assertEqual(cp.board, "b1")
 
     def test_site_sanitization(self):
         """测试站点名称规范化"""

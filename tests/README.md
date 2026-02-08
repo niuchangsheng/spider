@@ -122,6 +122,14 @@ deactivate
    - ✅ 选择器检测
    - ✅ 图片判断
 
+5. **Storage 文章测试** (`test_storage.py` → `TestStorageArticle`)
+   - ✅ 未下载图片不算爬过：`images_downloaded=0` 或未传时 `article_exists` 返回 False
+   - ✅ 已下载图片算爬过：`save_article(images_downloaded=True)` 后 `article_exists` 返回 True
+
+6. **DynamicNewsCrawler 检查点与 max_pages** (`test_dynamic_news_spider.py`)
+   - ✅ 检查点 current_page > max_pages 时返回 [] 且 `_skipped_checkpoint_over_max_pages=True`
+   - ✅ 检查点 current_page <= max_pages 时不设 _skipped，进入爬取逻辑
+
 ## 🧪 编写新测试
 
 ### 测试文件命名规范

@@ -60,6 +60,13 @@ class TestImageDeduplicatorFile(unittest.TestCase):
         d = ImageDeduplicator(use_perceptual_hash=False)
         self.assertFalse(d.is_duplicate_file(self.tmp_path / "nonexistent.png"))
 
+    def test_is_duplicate_file_exception_returns_false(self):
+        """文件无法打开（如非图片）时返回 False"""
+        bad_file = self.tmp_path / "bad.txt"
+        bad_file.write_text("not an image")
+        d = ImageDeduplicator(use_perceptual_hash=False)
+        self.assertFalse(d.is_duplicate_file(bad_file))
+
 
 class TestImageDeduplicatorLoadHashes(unittest.TestCase):
     def setUp(self):

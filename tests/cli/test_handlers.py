@@ -47,6 +47,33 @@ class TestHandleCheckpointStatus(unittest.TestCase):
         args = MagicMock(site="clear.com", board="b1", clear=True)
         asyncio.run(handle_checkpoint_status(args))
 
+    def test_checkpoint_with_seen_article_ids_and_stats(self):
+        storage.connect()
+        storage.save_checkpoint(
+            "full.com", "b1",
+            {
+                "current_page": 2, "last_thread_id": "123", "status": "running",
+                "stats": {"crawled_count": 10, "images_downloaded": 5, "failed_count": 0, "last_error": "x"},
+                "seen_article_ids": ["a1", "a2"], "min_article_id": "a1", "max_article_id": "a2",
+            },
+        )
+        storage.close()
+        args = MagicMock(site="full.com", board="b1", clear=False)
+        asyncio.run(handle_checkpoint_status(args))
+
+    @patch("cli.handlers.CheckpointManager")
+    def test_checkpoint_load_returns_none_shows_error(self, mock_cpm):
+        storage.connect()
+        storage.save_checkpoint("bad.com", "b1", {"current_page": 1, "last_thread_id": "", "status": "running", "stats": {}})
+        storage.close()
+        inst = MagicMock()
+        inst.checkpoint_file = "SQLite:bad.com_b1"
+        inst.exists.return_value = True
+        inst.load_checkpoint.return_value = None
+        mock_cpm.return_value = inst
+        args = MagicMock(site="bad.com", board="b1", clear=False)
+        asyncio.run(handle_checkpoint_status(args))
+
 
 class TestPrintStatistics(unittest.TestCase):
     """print_statistics 输出统计"""
@@ -95,6 +122,41 @@ class TestHandleCrawlBbs(unittest.TestCase):
         args = MagicMock(config="xindong", target="https://x.com", type="board", auto_detect=True)
         asyncio.run(handle_crawl_bbs(args))
 
+    @patch("cli.handlers.SpiderFactory")
+    @patch("cli.handlers.get_example_config")
+    def test_handle_crawl_bbs_thread_type(self, mock_get_config, mock_factory):
+        from config import get_example_config
+        try:
+            cfg = get_example_config("xindong")
+        except Exception:
+            self.skipTest("xindong config missing")
+        mock_get_config.return_value = cfg
+        spider = MagicMock()
+        spider.__aenter__ = AsyncMock(return_value=spider)
+        spider.__aexit__ = AsyncMock(return_value=None)
+        spider.crawl_thread = AsyncMock()
+        spider.parser = MagicMock()
+        spider.parser._extract_thread_id.return_value = "tid1"
+        spider.get_statistics.return_value = {"threads_crawled": 0, "images_found": 0, "images_downloaded": 0, "images_failed": 0, "duplicates_skipped": 0}
+        mock_factory.create.return_value = spider
+        args = MagicMock(config="xindong", target="https://bbs.xd.com/thread-1", type="thread", max_workers=2, use_adaptive_queue=True, auto_detect=False, max_pages=None, resume=True, start_page=None)
+        asyncio.run(handle_crawl_bbs(args))
+        spider.crawl_thread.assert_called_once()
+        self.assertTrue(cfg.crawler.use_adaptive_queue)
+
+    @patch("cli.handlers.SpiderFactory")
+    @patch("cli.handlers.ConfigLoader.auto_detect")
+    def test_handle_crawl_bbs_auto_detect_non_bbs_config(self, mock_auto, mock_factory):
+        from config import create_config_from_dict
+        cfg = create_config_from_dict({
+            "name": "News", "forum_type": "news", "base_url": "https://n.com",
+            "crawler_type": "news", "selectors": {}, "urls": [],
+        })
+        mock_auto.return_value = cfg
+        args = MagicMock(config=None, target="https://n.com", type="board", auto_detect=True)
+        asyncio.run(handle_crawl_bbs(args))
+        mock_factory.create.assert_not_called()
+
 
 class TestHandleCrawlNews(unittest.TestCase):
     """handle_crawl_news 测试（mock crawler）"""
@@ -111,6 +173,38 @@ class TestHandleCrawlNews(unittest.TestCase):
         asyncio.run(handle_crawl_news(args))
         mock_crawler_class.assert_called_once()
         crawler.crawl_news_and_download_images.assert_called_once()
+
+    @patch("cli.handlers.DynamicNewsCrawler")
+    def test_handle_crawl_news_max_pages_none_prints_unlimited(self, mock_crawler_class):
+        """max_pages 未传时打印「最大页数: 不限制」（覆盖 71）"""
+        crawler = MagicMock()
+        crawler.__aenter__ = AsyncMock(return_value=crawler)
+        crawler.__aexit__ = AsyncMock(return_value=None)
+        crawler.crawl_news_and_download_images = AsyncMock(return_value=(0, 0))
+        mock_crawler_class.return_value = crawler
+        args = MagicMock(url="https://news.com/p1", config=None, max_pages=None, resume=True, start_page=None, download_images=False, max_workers=None, use_adaptive_queue=None)
+        asyncio.run(handle_crawl_news(args))
+        crawler.crawl_news_and_download_images.assert_called_once()
+        self.assertIsNone(args.max_pages)
+
+    @patch("cli.handlers.DynamicNewsCrawler")
+    @patch("cli.handlers.get_example_config")
+    def test_handle_crawl_news_with_config(self, mock_get_config, mock_crawler_class):
+        from config import create_config_from_dict
+        cfg = create_config_from_dict({
+            "name": "News", "forum_type": "news", "base_url": "https://news.com",
+            "crawler_type": "news", "selectors": {}, "urls": [],
+        })
+        mock_get_config.return_value = cfg
+        crawler = MagicMock()
+        crawler.__aenter__ = AsyncMock(return_value=crawler)
+        crawler.__aexit__ = AsyncMock(return_value=None)
+        crawler.crawl_news_and_download_images = AsyncMock(return_value=(0, 0))
+        mock_crawler_class.return_value = crawler
+        args = MagicMock(url="https://news.com/p1", config="sxd", max_pages=1, resume=True, start_page=None, download_images=False, max_workers=4, use_adaptive_queue=True)
+        asyncio.run(handle_crawl_news(args))
+        self.assertEqual(cfg.crawler.max_concurrent_requests, 4)
+        self.assertTrue(cfg.crawler.use_adaptive_queue)
 
 
 class TestHandleCrawl(unittest.TestCase):
@@ -159,3 +253,29 @@ class TestHandleCrawl(unittest.TestCase):
         asyncio.run(handle_crawl(args))
         mock_crawler_class.assert_called_once()
         self.assertEqual(crawler.crawl_news_and_download_images.call_count, 1)
+
+    @patch("cli.handlers.get_example_config")
+    def test_handle_crawl_news_config_no_urls_returns_early(self, mock_get_config):
+        from config import create_config_from_dict
+        cfg = create_config_from_dict({
+            "name": "N", "forum_type": "news", "base_url": "https://n.com",
+            "crawler_type": "news", "selectors": {}, "urls": [],
+        })
+        mock_get_config.return_value = cfg
+        with patch("cli.handlers.get_news_urls", return_value=[]):
+            args = MagicMock(config="sxd", max_workers=None, use_adaptive_queue=None, max_pages=1, resume=True, start_page=None, download_images=False)
+            asyncio.run(handle_crawl(args))
+
+    @patch("cli.handlers.SpiderFactory")
+    @patch("cli.handlers.get_example_config")
+    def test_handle_crawl_bbs_no_boards_no_urls_returns_early(self, mock_get_config, mock_factory):
+        from config import create_config_from_dict
+        cfg = create_config_from_dict({
+            "name": "B", "forum_type": "bbs", "base_url": "https://b.com",
+            "crawler_type": "bbs", "selectors": {}, "urls": [], "boards": [],
+        })
+        mock_get_config.return_value = cfg
+        with patch("cli.handlers.get_forum_boards", return_value=[]), patch("cli.handlers.get_forum_urls", return_value=[]):
+            args = MagicMock(config="xindong", max_workers=None, use_adaptive_queue=None, max_pages=None, resume=True, start_page=None, download_images=False)
+            asyncio.run(handle_crawl(args))
+        mock_factory.create.assert_not_called()
