@@ -7,7 +7,7 @@ import aiohttp
 import hashlib
 import os
 import re
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from urllib.parse import urlparse
 from loguru import logger
 from pathlib import Path
@@ -174,6 +174,8 @@ class DynamicNewsCrawler:
         resume: bool = True,
         start_page: Optional[int] = None,
         download_images: bool = False,
+        pipeline_article_queue: Optional[asyncio.Queue] = None,
+        pipeline_sentinel_count: int = 0,
     ) -> List[Dict]:
         """
         使用Ajax方式爬取动态页面（支持断点续传）
@@ -187,6 +189,8 @@ class DynamicNewsCrawler:
             resume: 是否从检查点恢复（默认True）
             start_page: 起始页码（如果指定，会覆盖检查点）
             download_images: 是否下载图片（仅当 True 时才把文章写入 Storage 视为已爬）
+            pipeline_article_queue: 若设置，每篇新文章会 put 到该队列（用于三阶段流水线）
+            pipeline_sentinel_count: 退出时向 pipeline_article_queue 放入的 None 数量（等于详情 worker 数）
         
         Returns:
             文章列表
@@ -220,6 +224,9 @@ class DynamicNewsCrawler:
                 status = checkpoint_data.get('status', 'running')
                 if status == 'completed':
                     logger.info("✅ 该任务已完成爬取，跳过")
+                    if pipeline_article_queue and pipeline_sentinel_count > 0:
+                        for _ in range(pipeline_sentinel_count):
+                            await pipeline_article_queue.put(None)
                     return []
                 
                 start_page_num = checkpoint_data.get('current_page', 1)
@@ -228,6 +235,9 @@ class DynamicNewsCrawler:
                         f"✅ 检查点已在第 {start_page_num} 页，超过 max_pages={max_pages}，本次不爬取"
                     )
                     self._skipped_checkpoint_over_max_pages = True
+                    if pipeline_article_queue and pipeline_sentinel_count > 0:
+                        for _ in range(pipeline_sentinel_count):
+                            await pipeline_article_queue.put(None)
                     return []
                 seen_raw = checkpoint_data.get('seen_article_ids') or []
                 seen_article_ids = set(seen_raw) if isinstance(seen_raw, list) else set()
@@ -297,8 +307,8 @@ class DynamicNewsCrawler:
                     
                     seen_article_ids.add(article_id)
                     new_articles.append(article)
-                    # 仅下载图片时才持久化（不下载图片不算爬过，下次带 --download-images 仍会处理）
-                    if download_images:
+                    # 仅下载图片且非流水线模式时才在此持久化（流水线模式在图片下载完成后由 image worker 写入）
+                    if download_images and not pipeline_article_queue:
                         storage.save_article({**article, "site": site, "board": "news", "images_downloaded": 1})
                     
                     # 更新最小/最大 article_id（用于统计和日志，不用于去重）
@@ -351,6 +361,10 @@ class DynamicNewsCrawler:
                     logger.info(f"   ✓ 发现 {len(new_articles)} 篇新文章 (本页共 {len(articles)} 篇)")
                     all_articles.extend(new_articles)
                     self.stats['articles_found'] += len(new_articles)
+                    # 流水线模式：将新文章推入队列，供详情 worker 立即拉取
+                    if pipeline_article_queue:
+                        for a in new_articles:
+                            await pipeline_article_queue.put(a)
                 
                 # 3. 保存检查点（每页保存一次，无新文章时也推进页码）
                 checkpoint.save_checkpoint(
@@ -398,6 +412,11 @@ class DynamicNewsCrawler:
             logger.error(f"❌ 爬取过程中发生错误: {e}")
             checkpoint.mark_error(str(e))
             raise
+        finally:
+            # 流水线模式：任何退出路径都通知详情 worker 列表已结束
+            if pipeline_article_queue and pipeline_sentinel_count > 0:
+                for _ in range(pipeline_sentinel_count):
+                    await pipeline_article_queue.put(None)
     
     async def crawl_dynamic_page_selenium(
         self, 
@@ -638,32 +657,105 @@ class DynamicNewsCrawler:
         logger.info("   Ajax 首页无文章或请求失败，改用 Selenium 方式")
         return await self.crawl_dynamic_page_selenium(url, max_clicks=max_pages) or []
 
-    async def crawl_news_and_download_images(
+    async def _detail_worker_pipeline(
+        self,
+        worker_id: int,
+        article_queue: asyncio.Queue,
+        image_queue: asyncio.Queue,
+        save_dir: Path,
+        site: str,
+    ) -> None:
+        """流水线阶段 2：从 article_queue 取文章，拉详情，将图片任务放入 image_queue"""
+        while True:
+            article = await article_queue.get()
+            if article is None:
+                break
+            try:
+                detail = await self.crawl_article_detail(article)
+                if not detail:
+                    continue
+                images = detail.get("images", [])
+                article_id = detail.get("article_id", "unknown")
+                article_snapshot = {
+                    "article_id": article_id,
+                    "url": detail.get("url", ""),
+                    "title": detail.get("title", ""),
+                    "site": site,
+                    "board": "news",
+                    "metadata": detail.get("metadata", {}),
+                }
+                for img_url in images:
+                    img_filename = _extract_image_filename(img_url)
+                    final_filename = f"{article_id}_{img_filename}"
+                    save_path = save_dir / final_filename
+                    await image_queue.put({
+                        "url": img_url,
+                        "save_path": save_path,
+                        "metadata": {
+                            "article_id": article_id,
+                            "title": detail.get("title", ""),
+                            "article_url": detail.get("url", ""),
+                            "image_url": img_url,
+                        },
+                        "article_id": article_id,
+                        "total_count": len(images),
+                        "article_snapshot": article_snapshot,
+                    })
+            except Exception as e:
+                logger.error(f"详情 worker {worker_id} 出错: {e}")
+                self.stats["articles_failed"] += 1
+
+    async def _image_worker_pipeline(
+        self,
+        worker_id: int,
+        image_queue: asyncio.Queue,
+        downloader: ImageDownloader,
+        article_downloaded_count: Dict[str, int],
+        lock: asyncio.Lock,
+        site: str,
+    ) -> None:
+        """流水线阶段 3：从 image_queue 取任务下载，最后一图时写 save_article(images_downloaded=1)"""
+        while True:
+            task = await image_queue.get()
+            if task is None:
+                break
+            try:
+                r = await downloader.download_image(
+                    task["url"],
+                    task["save_path"],
+                    task["metadata"],
+                )
+                if r.get("success"):
+                    self.stats["images_downloaded"] += 1
+                else:
+                    self.stats["images_failed"] += 1
+                article_id = task["article_id"]
+                total_count = task["total_count"]
+                article_snapshot = task["article_snapshot"]
+                async with lock:
+                    article_downloaded_count[article_id] = article_downloaded_count.get(article_id, 0) + 1
+                    if article_downloaded_count[article_id] == total_count:
+                        storage.save_article({**article_snapshot, "images_downloaded": 1})
+            except Exception as e:
+                logger.error(f"图片 worker {worker_id} 出错: {e}")
+                self.stats["images_failed"] += 1
+
+    async def _crawl_news_serial(
         self,
         url: str,
-        max_pages: Optional[int] = None,
-        resume: bool = True,
-        start_page: Optional[int] = None,
-        download_images: bool = True,
+        max_pages: Optional[int],
+        resume: bool,
+        start_page: Optional[int],
     ) -> Tuple[int, int]:
-        """
-        一站式：列表爬取（自动识别）→ crawl_articles_batch → 图片下载。
-        队列与并发从 self.config 读取。
-        """
+        """原三阶段串行逻辑（Selenium 或无需流水线时使用）"""
         articles = await self.crawl_dynamic_page(
             url, max_pages=max_pages, resume=resume, start_page=start_page,
-            download_images=download_images,
+            download_images=True,
         )
         if not articles:
-            if not getattr(self, "_skipped_checkpoint_over_max_pages", False):
-                logger.warning(f"⚠️  {url} 没有找到文章")
             return (0, 0)
-        logger.info(f"✅ {url} 发现 {len(articles)} 篇文章")
-        downloaded_images = 0
-        if not download_images:
-            return (len(articles), 0)
-        use_adaptive = getattr(self.config.crawler, "use_adaptive_queue", False)
         workers = self.config.crawler.max_concurrent_requests or 5
+        use_adaptive = getattr(self.config.crawler, "use_adaptive_queue", False)
         full_articles = await self.crawl_articles_batch(
             articles, use_queue=True, max_workers=workers, use_adaptive=use_adaptive
         )
@@ -676,51 +768,100 @@ class DynamicNewsCrawler:
         for article in full_articles:
             for img_url in article.get("images", []):
                 article_id = article.get("article_id", "unknown")
-                img_filename = _extract_image_filename(img_url)
-                final_filename = f"{article_id}_{img_filename}"
-                save_path = save_dir / final_filename
+                save_path = save_dir / f"{article_id}_{_extract_image_filename(img_url)}"
                 image_tasks.append({
                     "url": img_url,
                     "save_path": save_path,
-                    "metadata": {
-                        "article_id": article_id,
-                        "title": article.get("title", ""),
-                        "article_url": article.get("url", ""),
-                        "image_url": img_url,
-                    },
+                    "metadata": {"article_id": article_id, "title": article.get("title", ""), "article_url": article.get("url", ""), "image_url": img_url},
                 })
         if not image_tasks:
-            logger.info("  无图片需下载")
             return (len(articles), 0)
-        use_adaptive = getattr(self.config.crawler, "use_adaptive_queue", False)
-        workers = self.config.crawler.max_concurrent_requests or 5
         queue_size = getattr(self.config.crawler, "queue_size", 1000)
         results_container = []
         async with ImageDownloader() as downloader:
-            async def download_one(task_info):
-                r = await downloader.download_image(
-                    task_info["url"],
-                    task_info["save_path"],
-                    task_info["metadata"],
-                )
+            async def download_one(t):
+                r = await downloader.download_image(t["url"], t["save_path"], t["metadata"])
                 if r.get("success"):
                     results_container.append(1)
                 return r.get("success", False)
-            if use_adaptive:
-                q = AdaptiveCrawlQueue(
-                    initial_workers=workers,
-                    max_workers=workers * 2,
-                    min_workers=1,
-                    queue_size=queue_size,
-                )
-                logger.info(f"🎯 使用自适应队列下载图片: 初始并发={workers}")
-            else:
-                q = CrawlQueue(max_workers=workers, queue_size=queue_size)
-                logger.info(f"🚀 使用异步队列下载图片: 并发数={workers}")
+            q = AdaptiveCrawlQueue(initial_workers=workers, max_workers=workers * 2, min_workers=1, queue_size=queue_size) if use_adaptive else CrawlQueue(max_workers=workers, queue_size=queue_size)
             await q.run(image_tasks, download_one)
-            downloaded_images = len(results_container)
-        logger.success(f"✅ {url} 图片下载完成: {downloaded_images}/{len(image_tasks)}")
-        return (len(articles), downloaded_images)
+        return (len(articles), len(results_container))
+
+    async def crawl_news_and_download_images(
+        self,
+        url: str,
+        max_pages: Optional[int] = None,
+        resume: bool = True,
+        start_page: Optional[int] = None,
+        download_images: bool = True,
+    ) -> Tuple[int, int]:
+        """
+        一站式：列表 → 详情 → 图片。当 download_images 且 Ajax 可用时使用三阶段流水线并行，否则串行。
+        """
+        if not download_images:
+            articles = await self.crawl_dynamic_page(
+                url, max_pages=max_pages, resume=resume, start_page=start_page,
+                download_images=False,
+            )
+            return (len(articles), 0) if articles else (0, 0)
+
+        # 探测是否可用 Ajax（流水线仅支持 Ajax）
+        html = await self.fetch_page(url, is_ajax=True)
+        probe = self.parser.parse_articles(html) if html else []
+        if not probe:
+            logger.info("   Ajax 首页无文章，使用三阶段串行（可能走 Selenium）")
+            return await self._crawl_news_serial(url, max_pages, resume, start_page)
+
+        # 三阶段流水线并行：列表 → 详情 → 图片
+        logger.info("📋 三阶段流水线: 列表页 → 详情 → 图片（并行）")
+        queue_size = getattr(self.config.crawler, "queue_size", 1000)
+        workers = self.config.crawler.max_concurrent_requests or 5
+        num_detail_workers = workers
+        num_image_workers = max(workers, 8)  # 图片下载可更高并发
+        article_queue: asyncio.Queue = asyncio.Queue(maxsize=queue_size)
+        image_queue: asyncio.Queue = asyncio.Queue(maxsize=min(2000, queue_size * 2))
+        domain = urlparse(url).netloc
+        site = domain
+        save_dir = self.config.image.download_dir / domain
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        article_downloaded_count: Dict[str, int] = {}
+        lock = asyncio.Lock()
+
+        async with ImageDownloader() as downloader:
+            detail_tasks = [
+                asyncio.create_task(
+                    self._detail_worker_pipeline(i, article_queue, image_queue, save_dir, site)
+                )
+                for i in range(num_detail_workers)
+            ]
+            image_tasks = [
+                asyncio.create_task(
+                    self._image_worker_pipeline(
+                        i, image_queue, downloader, article_downloaded_count, lock, site
+                    )
+                )
+                for i in range(num_image_workers)
+            ]
+            articles = await self.crawl_dynamic_page_ajax(
+                url,
+                max_pages=max_pages,
+                resume=resume,
+                start_page=start_page,
+                download_images=True,
+                pipeline_article_queue=article_queue,
+                pipeline_sentinel_count=num_detail_workers,
+            )
+            await asyncio.gather(*detail_tasks)
+            for _ in range(num_image_workers):
+                await image_queue.put(None)
+            await asyncio.gather(*image_tasks)
+
+        total_articles = len(articles) if articles else 0
+        downloaded_images = self.stats.get("images_downloaded", 0)
+        logger.success(f"✅ {url} 流水线完成: 文章 {total_articles}，下载图片 {downloaded_images}")
+        return (total_articles, downloaded_images)
 
     def get_statistics(self) -> Dict:
         """获取统计信息"""
