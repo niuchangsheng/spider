@@ -85,3 +85,110 @@ class TestImageDownloaderDownloadImage(unittest.TestCase):
             self.assertIn("error", result)
 
         asyncio.run(run())
+
+    @patch("core.downloader.aiohttp.ClientSession")
+    def test_download_image_validation_failed(self, mock_session_cls):
+        """模拟返回数据过小导致 _validate_image 失败"""
+        tiny = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde"
+        resp = MagicMock()
+        resp.status = 200
+        resp.read = AsyncMock(return_value=tiny)
+        resp.__aenter__ = AsyncMock(return_value=resp)
+        resp.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.get.return_value = resp
+
+        async def run():
+            d = ImageDownloader()
+            d.session = mock_session
+            result = await d.download_image("https://example.com/tiny.png", Path("/tmp/tiny.png"))
+            self.assertFalse(result.get("success"))
+            self.assertEqual(result.get("reason"), "validation_failed")
+
+        asyncio.run(run())
+
+    @patch("core.downloader.aiohttp.ClientSession")
+    def test_download_image_exception(self, mock_session_cls):
+        """模拟请求抛异常"""
+        mock_session = MagicMock()
+        mock_session.get.side_effect = Exception("network error")
+
+        async def run():
+            d = ImageDownloader()
+            d.session = mock_session
+            result = await d.download_image("https://example.com/x.png", Path("/tmp/x.png"))
+            self.assertFalse(result.get("success"))
+            self.assertIn("error", result)
+
+        asyncio.run(run())
+
+
+class TestImageDownloaderBatchAndStats(unittest.TestCase):
+    """download_batch / get_stats 测试"""
+
+    def test_get_stats(self):
+        d = ImageDownloader()
+        stats = d.get_stats()
+        self.assertIn("total", stats)
+        self.assertIn("success", stats)
+        self.assertIn("failed", stats)
+        self.assertIn("skipped", stats)
+
+    @patch("core.downloader.aiohttp.ClientSession")
+    def test_download_batch_empty(self, mock_session_cls):
+        async def run():
+            d = ImageDownloader()
+            d.session = MagicMock()
+            results = await d.download_batch([], Path("/tmp/out"))
+            self.assertEqual(results, [])
+
+        asyncio.run(run())
+
+    @patch("core.downloader.aiohttp.ClientSession")
+    def test_download_batch_one_url(self, mock_session_cls):
+        """download_batch 单 URL 调用路径（可能因校验失败返回空列表）"""
+        png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+        resp = MagicMock()
+        resp.status = 200
+        resp.read = AsyncMock(return_value=png_bytes)
+        resp.__aenter__ = AsyncMock(return_value=resp)
+        resp.__aexit__ = AsyncMock(return_value=None)
+        mock_session = MagicMock()
+        mock_session.get.return_value = resp
+
+        async def run():
+            d = ImageDownloader()
+            d.session = mock_session
+            save_dir = Path("/tmp/coverage_batch_out")
+            save_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                results = await d.download_batch(
+                    ["https://example.com/one.png"],
+                    save_dir,
+                    metadata={"board": "b1", "thread_id": "t1"},
+                )
+                self.assertIsInstance(results, list)
+            finally:
+                for f in save_dir.glob("*"):
+                    f.unlink(missing_ok=True)
+                if save_dir.exists():
+                    save_dir.rmdir()
+
+        asyncio.run(run())
+
+
+class TestImageDownloaderContextManager(unittest.TestCase):
+    """__aenter__ / __aexit__ 测试"""
+
+    @patch("core.downloader.aiohttp.ClientSession")
+    def test_async_context_manager(self, mock_session_cls):
+        mock_session = MagicMock()
+        mock_session.close = AsyncMock(return_value=None)
+        mock_session_cls.return_value = mock_session
+
+        async def run():
+            async with ImageDownloader() as d:
+                self.assertIsNotNone(d.session)
+            mock_session.close.assert_called_once()
+
+        asyncio.run(run())

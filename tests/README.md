@@ -199,6 +199,38 @@ coverage report -m    # 文本格式（含缺失行）
 coverage html         # 生成 htmlcov/index.html
 ```
 
+## 手动验证场景（新闻爬虫 sxd）
+
+以下场景用于验证 `crawl --config sxd` 的检查点、max_pages、download_images 行为，需在项目根目录、已激活虚拟环境下执行。
+
+### 场景：`--download-images` + `max-pages=1`
+
+1. **清检查点后跑 1 页并下载图片**
+
+   ```bash
+   python spider.py checkpoint-status --site sxd.xd.com --board news --clear
+   python spider.py crawl --config sxd --max-pages=1 --download-images
+   ```
+
+   - 预期：爬取第 1 页，发现 5 篇新文章，写入 Storage（`images_downloaded=1`），爬取 5 篇详情，下载图片（若有）；检查点保存为 page 2。
+
+2. **再跑无 `--download-images`（清检查点后）**
+
+   ```bash
+   python spider.py checkpoint-status --site sxd.xd.com --board news --clear
+   python spider.py crawl --config sxd --max-pages=1
+   ```
+
+   - 预期：第 1 页 5 篇均视为已爬（`article_exists` 因已下载图片为 True），日志出现「本页 5 篇均重复」，发现 0 篇新文章。
+
+3. **再跑带 `--download-images` 且 `max-pages=1`**
+
+   ```bash
+   python spider.py crawl --config sxd --max-pages=1 --download-images
+   ```
+
+   - 预期：检查点 page 2 > max_pages=1，本次不爬取，不请求列表页，发现 0 篇；不会再次爬详情/下图片。
+
 ## ⚠️ 注意事项
 
 1. **虚拟环境**: 所有测试必须在虚拟环境下运行

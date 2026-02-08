@@ -123,6 +123,61 @@ class TestSelectorDetector(unittest.TestCase):
         self.assertIn("overall", result["confidence"])
         self.assertIn(result["status"], ("success", "uncertain"))
 
+    def test_detect_thread_list_selector_phpbb(self):
+        """测试 phpBB 帖子列表选择器"""
+        html = """
+        <html><body>
+            <li class="row"></li>
+            <li class="row"></li>
+            <li class="row"></li>
+        </body></html>
+        """
+        selector, confidence = self.detector.detect_thread_list_selector(html, "phpbb")
+        self.assertIn("li.row", selector)
+        self.assertGreater(confidence, 0)
+
+    def test_detect_thread_link_selector_fallback(self):
+        """测试无明确 thread 链接时回退到最大链接"""
+        html = """
+        <html><body>
+            <div><a href="/t1">Short</a></div>
+            <div><a href="/t2">This is a longer link text</a></div>
+        </body></html>
+        """
+        selector, confidence = self.detector.detect_thread_link_selector(html, "custom")
+        self.assertIsNotNone(selector)
+        self.assertGreaterEqual(confidence, 0)
+
+    def test_detect_image_selector_no_content_fallback(self):
+        """测试无内容图时回退到 img[src]"""
+        html = '<html><body><img src="photo.jpg" /></body></html>'
+        selector, confidence = self.detector.detect_image_selector(html)
+        self.assertIsNotNone(selector)
+        self.assertGreaterEqual(confidence, 0)
+
+    def test_is_content_image_small_dimensions(self):
+        """测试小尺寸图片不算内容图"""
+        from bs4 import BeautifulSoup
+        img = BeautifulSoup('<img src="x.jpg" width="50" height="50" />', 'lxml').find('img')
+        self.assertFalse(self.detector._is_content_image(img))
+
+    def test_generate_config_code(self):
+        """测试生成配置代码"""
+        selectors = {
+            "forum_type": "discuz",
+            "selectors": {
+                "thread_list_selector": "tbody.thread",
+                "thread_link_selector": "a.xst",
+                "image_selector": "img",
+                "next_page_selector": "a.nxt",
+            },
+            "confidence": {"overall": 0.85},
+        }
+        code = self.detector.generate_config_code(selectors)
+        self.assertIn("thread_list_selector", code)
+        self.assertIn("tbody.thread", code)
+        self.assertIn("85", code)  # 置信度格式为 85.00%
+
 
 if __name__ == '__main__':
     unittest.main()

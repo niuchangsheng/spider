@@ -61,3 +61,54 @@ class TestDynamicPageParserParseArticles(unittest.TestCase):
         parser = DynamicPageParser(cfg)
         articles = parser.parse_articles("<html><body></body></html>")
         self.assertEqual(articles, [])
+
+
+class TestDynamicPageParserExtractArticleInfo(unittest.TestCase):
+    """_extract_article_info 测试"""
+
+    @classmethod
+    def setUpClass(cls):
+        from config import create_config_from_dict
+        cls.config = create_config_from_dict({
+            "name": "T", "forum_type": "news", "base_url": "https://news.com",
+            "selectors": {
+                "article": ".article",
+                "title": ".title",
+                "link": ".link",
+                "author": ".author",
+                "date": ".date",
+                "summary": ".body",
+            },
+            "urls": [],
+        })
+
+    def test_extract_article_info_from_title_link(self):
+        """从标题内链接提取"""
+        from bs4 import BeautifulSoup
+        html = '<div class="article"><h3 class="title"><a href="/detail/123">标题</a></h3><span class="author">a</span><span class="date">d</span><div class="body">b</div></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        parser = DynamicPageParser(self.config)
+        article = parser._extract_article_info(soup.select_one(".article"))
+        self.assertIsNotNone(article)
+        self.assertEqual(article["title"], "标题")
+        self.assertIn("123", article["url"])
+        self.assertTrue(article["url"].startswith("https://"))
+
+    def test_extract_article_info_missing_title_returns_none(self):
+        """缺少标题返回 None"""
+        from bs4 import BeautifulSoup
+        html = '<div class="article"><span class="author">a</span><a class="link" href="/p/1">链接</a></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        parser = DynamicPageParser(self.config)
+        article = parser._extract_article_info(soup.select_one(".article"))
+        self.assertIsNone(article)
+
+    def test_extract_article_info_relative_url_prefixed(self):
+        """相对 URL 补全 base_url"""
+        from bs4 import BeautifulSoup
+        html = '<div class="article"><h3 class="title"><a href="/item/456">文</a></h3><span class="author">x</span><span class="date">d</span><div class="body">b</div></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        parser = DynamicPageParser(self.config)
+        article = parser._extract_article_info(soup.select_one(".article"))
+        self.assertIsNotNone(article)
+        self.assertTrue(article["url"].startswith("https://news.com"))

@@ -83,6 +83,12 @@ class TestGetForumBoards(unittest.TestCase):
     def test_nonexistent_returns_empty(self):
         self.assertEqual(get_forum_boards("nonexistent_xyz"), [])
 
+    def test_load_error_returns_empty(self):
+        from unittest.mock import patch
+        with patch("config.load_forum_config_file") as mock_load:
+            mock_load.side_effect = ValueError("bad json")
+            self.assertEqual(get_forum_boards("xindong"), [])
+
 
 class TestGetForumUrls(unittest.TestCase):
     def test_xindong_has_urls(self):
@@ -92,6 +98,12 @@ class TestGetForumUrls(unittest.TestCase):
     def test_nonexistent_returns_empty(self):
         self.assertEqual(get_forum_urls("nonexistent_xyz"), [])
 
+    def test_load_error_returns_empty(self):
+        from unittest.mock import patch
+        with patch("config.load_forum_config_file") as mock_load:
+            mock_load.side_effect = ValueError("bad json")
+            self.assertEqual(get_forum_urls("xindong"), [])
+
 
 class TestGetNewsUrls(unittest.TestCase):
     def test_sxd_has_urls(self):
@@ -100,6 +112,12 @@ class TestGetNewsUrls(unittest.TestCase):
 
     def test_nonexistent_returns_empty(self):
         self.assertEqual(get_news_urls("nonexistent_xyz"), [])
+
+    def test_load_error_returns_empty(self):
+        from unittest.mock import patch
+        with patch("config.load_forum_config_file") as mock_load:
+            mock_load.side_effect = ValueError("bad json")
+            self.assertEqual(get_news_urls("sxd"), [])
 
 
 class TestConfigLoader(unittest.TestCase):
@@ -186,3 +204,37 @@ class TestForumPresets(unittest.TestCase):
         from config import ForumPresets
         cfg = ForumPresets.vbulletin()
         self.assertEqual(cfg.bbs.forum_type, "vbulletin")
+
+
+class TestConfigLoaderAutoDetect(unittest.TestCase):
+    """ConfigLoader.auto_detect 测试（mock requests 与 detector）"""
+
+    def test_auto_detect_success(self):
+        from unittest.mock import patch, MagicMock
+        from config import ConfigLoader
+        mock_response = MagicMock()
+        mock_response.text = "<html><body>Powered by Discuz!</body></html>"
+        with patch("requests.get", return_value=mock_response), \
+             patch("detector.selector_detector.SelectorDetector") as mock_detector_cls:
+            mock_detector = MagicMock()
+            mock_detector.auto_detect_selectors.return_value = {
+                "forum_type": "discuz",
+                "selectors": {
+                    "thread_list_selector": "tbody.thread",
+                    "thread_link_selector": "a.xst",
+                    "image_selector": "img",
+                    "next_page_selector": "a.nxt",
+                },
+                "confidence": {"overall": 0.85},
+            }
+            mock_detector_cls.return_value = mock_detector
+            cfg = ConfigLoader.auto_detect("https://bbs.example.com/")
+            self.assertEqual(cfg.bbs.forum_type, "discuz")
+            self.assertEqual(cfg.bbs.thread_list_selector, "tbody.thread")
+
+    def test_auto_detect_exception_returns_default(self):
+        from unittest.mock import patch
+        from config import ConfigLoader
+        with patch("requests.get", side_effect=Exception("network error")):
+            cfg = ConfigLoader.auto_detect("https://bbs.example.com/")
+            self.assertIsInstance(cfg, Config)

@@ -223,6 +223,12 @@ class DynamicNewsCrawler:
                     return []
                 
                 start_page_num = checkpoint_data.get('current_page', 1)
+                if max_pages is not None and start_page_num > max_pages:
+                    logger.info(
+                        f"✅ 检查点已在第 {start_page_num} 页，超过 max_pages={max_pages}，本次不爬取"
+                    )
+                    self._skipped_checkpoint_over_max_pages = True
+                    return []
                 seen_raw = checkpoint_data.get('seen_article_ids') or []
                 seen_article_ids = set(seen_raw) if isinstance(seen_raw, list) else set()
                 min_article_id = checkpoint_data.get('min_article_id')
@@ -238,6 +244,7 @@ class DynamicNewsCrawler:
                 logger.info(f"   策略: 爬取 > {max_article_id} 的新文章（如果网站有更新）")
                 logger.info(f"   策略: 继续爬取所有未在集合中的文章（不依赖ID范围）")
         
+        self._skipped_checkpoint_over_max_pages = False
         page = start_page_num
         all_articles = []
         consecutive_no_new = 0  # 连续无新文章的页数（用于安全停止，避免分页循环时无限请求）
@@ -648,7 +655,8 @@ class DynamicNewsCrawler:
             download_images=download_images,
         )
         if not articles:
-            logger.warning(f"⚠️  {url} 没有找到文章")
+            if not getattr(self, "_skipped_checkpoint_over_max_pages", False):
+                logger.warning(f"⚠️  {url} 没有找到文章")
             return (0, 0)
         logger.info(f"✅ {url} 发现 {len(articles)} 篇文章")
         downloaded_images = 0

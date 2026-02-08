@@ -33,6 +33,19 @@ class TestStorageConnect(unittest.TestCase):
         finally:
             storage.close()
 
+    def test_unconnected_returns_empty_or_false(self):
+        """未 connect 时 get_statistics/get_all_threads 返回空，article_exists/save_article 为 False"""
+        config.database.sqlite_path = self.db_path
+        storage = Storage()
+        # 不调用 connect
+        self.assertEqual(storage.get_statistics(), {})
+        self.assertEqual(storage.get_all_threads(), [])
+        self.assertEqual(storage.get_all_threads("b1"), [])
+        self.assertFalse(storage.article_exists("art1"))
+        self.assertFalse(storage.save_article({"article_id": "art1", "url": "https://x", "title": "T", "site": "x", "board": "", "metadata": {}}))
+        self.assertIsNone(storage.get_thread("t1"))
+        self.assertFalse(storage.thread_exists("t1"))
+
 
 class TestStorageCheckpoint(unittest.TestCase):
     """Storage 检查点读写测试"""
