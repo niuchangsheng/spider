@@ -115,11 +115,20 @@ class Storage:
                 site TEXT,
                 board TEXT,
                 metadata TEXT,
-                created_at TEXT
+                created_at TEXT,
+                images_downloaded INTEGER DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_articles_article_id ON articles(article_id);
         """)
         self._conn.commit()
+        try:
+            self._conn.execute(
+                "ALTER TABLE articles ADD COLUMN images_downloaded INTEGER DEFAULT 0"
+            )
+            self._conn.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise
 
     def close(self):
         """关闭数据库连接"""
@@ -292,12 +301,13 @@ class Storage:
     # ==================== 文章（动态新闻，与 thread_exists 对称） ====================
 
     def article_exists(self, article_id: str) -> bool:
-        """检查文章是否已存在（权威去重依据，与 thread_exists 对称）"""
+        """检查文章是否已爬过且已下载图片（未下载图片不算爬过）"""
         if self._conn is None:
             return False
         try:
             cur = self._conn.execute(
-                "SELECT 1 FROM articles WHERE article_id = ? LIMIT 1", (article_id,)
+                "SELECT 1 FROM articles WHERE article_id = ? AND COALESCE(images_downloaded, 1) = 1 LIMIT 1",
+                (article_id,),
             )
             return cur.fetchone() is not None
         except sqlite3.Error as e:
@@ -319,16 +329,18 @@ class Storage:
                 created = now
             else:
                 created = str(created)
+            images_downloaded = 1 if article_data.get("images_downloaded") else 0
             self._conn.execute(
                 """
-                INSERT INTO articles (article_id, url, title, site, board, metadata, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO articles (article_id, url, title, site, board, metadata, created_at, images_downloaded)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(article_id) DO UPDATE SET
                     url=excluded.url,
                     title=excluded.title,
                     site=excluded.site,
                     board=excluded.board,
-                    metadata=excluded.metadata
+                    metadata=excluded.metadata,
+                    images_downloaded=excluded.images_downloaded
                 """,
                 (
                     article_id,
@@ -338,6 +350,7 @@ class Storage:
                     article_data.get("board"),
                     _serialize(article_data.get("metadata")),
                     created,
+                    images_downloaded,
                 ),
             )
             self._conn.commit()

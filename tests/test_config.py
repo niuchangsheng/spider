@@ -119,3 +119,70 @@ class TestConfigLoader(unittest.TestCase):
         from config import ConfigLoader
         cfg = ConfigLoader.load("vbulletin")
         self.assertEqual(cfg.bbs.forum_type, "vbulletin")
+
+
+class TestConfigGetBoardsAndUrls(unittest.TestCase):
+    """Config.get_boards / get_page_urls / get_page_entries 测试"""
+
+    def test_get_boards(self):
+        cfg = create_config_from_dict({
+            "name": "T", "forum_type": "discuz", "base_url": "https://t.com",
+            "selectors": {"thread_list": "x", "thread_link": "y"},
+            "urls": [
+                {"type": "board", "name": "版1", "url": "https://t.com/b1"},
+                {"type": "thread", "name": "帖1", "url": "https://t.com/t1"},
+            ],
+        })
+        boards = cfg.get_boards()
+        self.assertEqual(len(boards), 1)
+        self.assertEqual(boards[0]["name"], "版1")
+        self.assertEqual(boards[0]["url"], "https://t.com/b1")
+
+    def test_get_page_urls_and_entries(self):
+        cfg = create_config_from_dict({
+            "name": "T", "forum_type": "discuz", "base_url": "https://t.com",
+            "selectors": {"thread_list": "x", "thread_link": "y"},
+            "urls": ["https://t.com/1", {"type": "thread", "name": "帖1", "url": "https://t.com/t1"}],
+        })
+        entries = cfg.get_page_entries()
+        self.assertEqual(len(entries), 2)
+        urls = cfg.get_page_urls()
+        self.assertEqual(urls, ["https://t.com/1", "https://t.com/t1"])
+
+
+class TestLoadConfigFromEnv(unittest.TestCase):
+    """load_config_from_env 测试"""
+
+    def test_load_config_from_env(self):
+        import os
+        from config import load_config_from_env
+        orig = os.environ.get("BBS_BASE_URL")
+        try:
+            os.environ["BBS_BASE_URL"] = "https://env.com"
+            cfg = load_config_from_env()
+            self.assertEqual(cfg.bbs.base_url, "https://env.com")
+        finally:
+            if orig is not None:
+                os.environ["BBS_BASE_URL"] = orig
+            elif "BBS_BASE_URL" in os.environ:
+                del os.environ["BBS_BASE_URL"]
+
+
+class TestForumPresets(unittest.TestCase):
+    """ForumPresets 直接调用测试"""
+
+    def test_discuz(self):
+        from config import ForumPresets
+        cfg = ForumPresets.discuz()
+        self.assertEqual(cfg.bbs.forum_type, "discuz")
+        self.assertIn("normalthread", cfg.bbs.thread_list_selector)
+
+    def test_phpbb(self):
+        from config import ForumPresets
+        cfg = ForumPresets.phpbb()
+        self.assertEqual(cfg.bbs.forum_type, "phpbb")
+
+    def test_vbulletin(self):
+        from config import ForumPresets
+        cfg = ForumPresets.vbulletin()
+        self.assertEqual(cfg.bbs.forum_type, "vbulletin")

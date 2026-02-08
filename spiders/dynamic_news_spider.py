@@ -172,7 +172,8 @@ class DynamicNewsCrawler:
         base_url: str, 
         max_pages: Optional[int] = None,
         resume: bool = True,
-        start_page: Optional[int] = None
+        start_page: Optional[int] = None,
+        download_images: bool = False,
     ) -> List[Dict]:
         """
         使用Ajax方式爬取动态页面（支持断点续传）
@@ -185,6 +186,7 @@ class DynamicNewsCrawler:
             max_pages: 最大页数，None表示不限制
             resume: 是否从检查点恢复（默认True）
             start_page: 起始页码（如果指定，会覆盖检查点）
+            download_images: 是否下载图片（仅当 True 时才把文章写入 Storage 视为已爬）
         
         Returns:
             文章列表
@@ -240,6 +242,7 @@ class DynamicNewsCrawler:
         consecutive_no_new = 0  # 连续无新文章的页数（用于安全停止，避免分页循环时无限请求）
         max_consecutive_no_new = 10  # 连续 N 页无新文章则停止
         stopped_early = False  # 是否因连续无新文章而提前停止（不标记为 completed，便于下次继续）
+        stopped_by_max_pages = False  # 是否因达到 max_pages 限制而停止（不标记为 completed，下次可加大页数继续）
         
         try:
             while True:
@@ -286,8 +289,9 @@ class DynamicNewsCrawler:
                     
                     seen_article_ids.add(article_id)
                     new_articles.append(article)
-                    # 持久化到 Storage，下次运行可直接 article_exists 跳过（与 save_thread 对称）
-                    storage.save_article({**article, "site": site, "board": "news"})
+                    # 仅下载图片时才持久化（不下载图片不算爬过，下次带 --download-images 仍会处理）
+                    if download_images:
+                        storage.save_article({**article, "site": site, "board": "news", "images_downloaded": 1})
                     
                     # 更新最小/最大 article_id（用于统计和日志，不用于去重）
                     try:
@@ -359,6 +363,7 @@ class DynamicNewsCrawler:
                 # 检查页数限制
                 if max_pages and page >= max_pages:
                     logger.info(f"✅ 达到最大页数限制: {max_pages}")
+                    stopped_by_max_pages = True
                     break
                 
                 # 检查是否还有"查看更多"按钮 (辅助判断)
@@ -369,8 +374,8 @@ class DynamicNewsCrawler:
                 
                 page += 1
             
-            # 4. 仅在正常跑完时标记完成（提前停止时保持 running，便于下次继续）
-            if not stopped_early:
+            # 4. 仅在自然跑完时标记完成（因 max_pages 或连续无新文章停止时保持 running，便于下次继续）
+            if not stopped_early and not stopped_by_max_pages:
                 checkpoint.mark_completed(final_stats={
                     "total_articles": len(all_articles),
                     "total_images": self.stats.get('images_downloaded', 0)
@@ -608,6 +613,7 @@ class DynamicNewsCrawler:
         max_pages: Optional[int] = None,
         resume: bool = True,
         start_page: Optional[int] = None,
+        download_images: bool = False,
     ) -> List[Dict]:
         """
         爬取动态页文章列表（自动识别：先探测首页，有文章走 Ajax，无则走 Selenium）
@@ -618,7 +624,8 @@ class DynamicNewsCrawler:
             if probe:
                 logger.info("   探测到首页有文章，使用 Ajax 方式")
                 return await self.crawl_dynamic_page_ajax(
-                    url, max_pages=max_pages, resume=resume, start_page=start_page
+                    url, max_pages=max_pages, resume=resume, start_page=start_page,
+                    download_images=download_images,
                 )
         logger.info("   Ajax 首页无文章或请求失败，改用 Selenium 方式")
         return await self.crawl_dynamic_page_selenium(url, max_clicks=max_pages) or []
@@ -636,7 +643,8 @@ class DynamicNewsCrawler:
         队列与并发从 self.config 读取。
         """
         articles = await self.crawl_dynamic_page(
-            url, max_pages=max_pages, resume=resume, start_page=start_page
+            url, max_pages=max_pages, resume=resume, start_page=start_page,
+            download_images=download_images,
         )
         if not articles:
             logger.warning(f"⚠️  {url} 没有找到文章")
