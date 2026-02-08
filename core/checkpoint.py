@@ -79,10 +79,10 @@ class CheckpointManager:
             logger.error("Save checkpoint failed: {}", e)
             return False
 
-    def load_checkpoint(self) -> Optional[Dict[str, Any]]:
-        """加载检查点（委托 Storage）"""
+    def load_checkpoint(self, *, silent: bool = False) -> Optional[Dict[str, Any]]:
+        """加载检查点（委托 Storage）。silent=True 时不打「Checkpoint loaded」日志（用于 mark_completed 等仅读取再更新）。"""
         data = storage.load_checkpoint(self.site, self.board)
-        if data:
+        if data and not silent:
             logger.info("Checkpoint loaded: page {}", data.get("current_page", 0))
         return data
 
@@ -98,7 +98,7 @@ class CheckpointManager:
 
     def mark_completed(self, final_stats: Optional[Dict[str, Any]] = None) -> bool:
         """标记任务完成"""
-        data = self.load_checkpoint()
+        data = self.load_checkpoint(silent=True)
         if not data:
             logger.warning("No checkpoint to mark completed")
             return False
@@ -115,7 +115,7 @@ class CheckpointManager:
 
     def mark_error(self, error_message: str) -> bool:
         """标记任务错误"""
-        data = self.load_checkpoint()
+        data = self.load_checkpoint(silent=True)
         if not data:
             return False
         stats = data.get("stats", {})

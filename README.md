@@ -296,6 +296,10 @@ python spider.py crawl-bbs "https://bbs.xd.com/..." --type thread --auto-detect
 python spider.py crawl-news "https://sxd.xd.com/" --download-images --max-pages 5
 python spider.py checkpoint-status --site sxd.xd.com --board all
 
+# 说明：--no-resume 仅重置「起始页」（从第 1 页开始），不会清空已入库的文章。
+# 若之前已爬过该站，会看到「本页 X 篇均重复」和 0 篇新文章，属正常（去重以 SQLite 为准）。
+# 若要重新爬取并计入新文章，可先清除检查点：checkpoint-status --site DOMAIN --board all --clear
+
 # 查看帮助
 python spider.py --help                    # 主帮助
 python spider.py crawl --help              # 统一爬取帮助
