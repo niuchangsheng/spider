@@ -214,7 +214,7 @@ class DynamicNewsCrawler:
             if checkpoint.exists():
                 logger.info("⚠️  将覆盖现有检查点")
         elif resume and checkpoint.exists():
-            # 从检查点恢复
+            # 从检查点恢复（只 load 一次，避免 get_* 重复打 4 次「Checkpoint loaded」）
             checkpoint_data = checkpoint.load_checkpoint()
             if checkpoint_data:
                 status = checkpoint_data.get('status', 'running')
@@ -223,9 +223,10 @@ class DynamicNewsCrawler:
                     return []
                 
                 start_page_num = checkpoint_data.get('current_page', 1)
-                seen_article_ids = checkpoint.get_seen_article_ids()
-                min_article_id = checkpoint.get_min_article_id()
-                max_article_id = checkpoint.get_max_article_id()
+                seen_raw = checkpoint_data.get('seen_article_ids') or []
+                seen_article_ids = set(seen_raw) if isinstance(seen_raw, list) else set()
+                min_article_id = checkpoint_data.get('min_article_id')
+                max_article_id = checkpoint_data.get('max_article_id')
                 
                 logger.info(f"🔄 从检查点恢复: 第 {start_page_num} 页")
                 logger.info(f"   已爬取文章数: {len(seen_article_ids)}")
